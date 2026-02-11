@@ -576,7 +576,7 @@ function createResultsScreen() {
   screen.appendChild(createMethodologyBlock("results"));
 
   return screen;
-
+}
 // --- Контрольные параметры ---
 
 function createControlSection(scales, validity) {
@@ -1761,6 +1761,7 @@ function createElement(tag, className, textContent) {
   if (textContent) el.textContent = textContent;
   return el;
 }
+
 
 
 

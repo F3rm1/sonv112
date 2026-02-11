@@ -866,4 +866,62 @@ const UI_TEXTS = {
     basis: "Основан на DSM-5, ASRS, RAADS-R, CAT-Q, AQ-50 и других валидированных методиках.",
     version: "Версия 1.0"
   }
+
+};
+// ============================================================
+// ТЕОРЕТИЧЕСКАЯ ОСНОВА И ИСТОЧНИКИ
+// ============================================================
+
+const METHODOLOGY = {
+  shortDescription: "Опросник основан на критериях DSM-5 (Diagnostic and Statistical Manual of Mental Disorders, " +
+    "5th Edition) и конструктах ведущих валидированных инструментов скрининга нейроотличности у взрослых. " +
+    "Вопросы переработаны для описания повседневных ситуаций на неклиническом языке.",
+
+  principles: [
+    "Вопросы описывают поведение в конкретных бытовых ситуациях, а не абстрактные симптомы",
+    "Учитываются компенсаторные стратегии — оценивается наличие трудности, а не степень её преодоления",
+    "Включён блок камуфляжа/маскинга для выявления скрытых трудностей (особенно актуально для женщин)",
+    "Контрольные шкалы позволяют оценить достоверность ответов и влияние текущего состояния",
+    "Результат — профиль по нескольким шкалам, а не единственный диагноз, что отражает частую коморбидность"
+  ],
+
+  scalesBasis: [
+    { scale: "СДВГ — Невнимательность", basis: "DSM-5 критерий A1 (314.00 / F90.0), ASRS v1.1 (Kessler et al., 2005), Barkley CDS Scale (2023)" },
+    { scale: "СДВГ — Гиперактивность/Импульсивность", basis: "DSM-5 критерий A2 (314.01 / F90.1), ASRS v1.1" },
+    { scale: "Эмоциональная дисрегуляция", basis: "Barkley (2015), Surman et al. (2013), RSD — Dodson (2005–2022)" },
+    { scale: "РАС — Социальная коммуникация", basis: "DSM-5 критерий A (299.00 / F84.0), RAADS-R (Ritvo et al., 2011), AQ-50 (Baron-Cohen et al., 2001)" },
+    { scale: "РАС — Паттерны и ригидность", basis: "DSM-5 критерий B1–B3 (299.00 / F84.0), AQ-50" },
+    { scale: "Сенсорная обработка", basis: "DSM-5 критерий B4, Sensory Profile (Dunn, 1997), Brown & Dunn (2002)" },
+    { scale: "Камуфляж / Маскинг", basis: "CAT-Q (Hull et al., 2019), Lai et al. (2017)" },
+    { scale: "Дислексия", basis: "DSM-5 SLD — reading (315.00 / F81.0), Adult Dyslexia Checklist" },
+    { scale: "Дискалькулия", basis: "DSM-5 SLD — mathematics (315.1 / F81.2), Butterworth Screener" },
+    { scale: "DCD / Диспраксия", basis: "DSM-5 DCD (315.4 / F82), Adult DCD Checklist" }
+  ],
+
+  references: [
+    "American Psychiatric Association. (2013). Diagnostic and Statistical Manual of Mental Disorders (5th ed.). APA Publishing.",
+    "Kessler, R.C., et al. (2005). The World Health Organization Adult ADHD Self-Report Scale (ASRS). Psychological Medicine, 35(2), 245–256.",
+    "Ritvo, R.A., et al. (2011). The Ritvo Autism Asperger Diagnostic Scale-Revised (RAADS-R). Journal of Autism and Developmental Disorders, 41(8), 1076–1089.",
+    "Baron-Cohen, S., et al. (2001). The Autism-Spectrum Quotient (AQ). Journal of Autism and Developmental Disorders, 31(1), 5–17.",
+    "Hull, L., et al. (2019). Development and Validation of the Camouflaging Autistic Traits Questionnaire (CAT-Q). Journal of Autism and Developmental Disorders, 49(3), 819–833.",
+    "Hull, L., et al. (2017). \"Putting on My Best Normal\": Social Camouflaging in Adults with Autism. Journal of Autism and Developmental Disorders, 47(8), 2519–2534.",
+    "Barkley, R.A. (2015). Emotional Dysregulation in ADHD — Implications for Clinical Research and Practice.",
+    "Barkley, R.A. (2023). Cognitive Disengagement Syndrome (CDS).",
+    "Surman, C.B., et al. (2013). Understanding deficient emotional self-regulation in adults with ADHD. ADHD Attention Deficit and Hyperactivity Disorders, 5(3), 273–283.",
+    "Dodson, W. (2005–2022). Rejection Sensitive Dysphoria — клинические публикации.",
+    "Lai, M.-C., et al. (2015). Sex/Gender Differences and Autism. JAACAP, 54(1), 11–24.",
+    "Quinn, P.O. & Madhoo, M. (2014). A Review of ADHD in Women and Girls. Primary Care Companion for CNS Disorders, 16(3).",
+    "Rommelse, N.N.J., et al. (2010). Shared heritability of ADHD and ASD. European Child & Adolescent Psychiatry, 19(3), 281–295.",
+    "Germano, E., et al. (2010). Comorbidity of ADHD and Dyslexia. Developmental Neuropsychology, 35(5), 475–493.",
+    "Dunn, W. (1997). The Impact of Sensory Processing Abilities on the Daily Lives of Young Children. Infants & Young Children, 9(4), 23–35.",
+    "Jarrett, M.A. (2016). ADHD symptoms, anxiety symptoms, and executive functioning in emerging adults. Psychological Assessment, 28(2), 245–250."
+  ],
+
+  limitations: [
+    "Опросник не проходил психометрическую валидацию на нормативной выборке",
+    "Самоотчёт ограничен способностью к саморефлексии и может искажаться текущим состоянием",
+    "Пороговые значения установлены теоретически, по аналогии с валидированными инструментами",
+    "Дифференциальная диагностика (отграничение от КПТСР, тревожных расстройств, БАР, расстройств личности) невозможна через самоопросник",
+    "Культурный контекст: нормы поведения различаются в разных культурах"
+  ]
 };

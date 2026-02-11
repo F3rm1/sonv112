@@ -1185,235 +1185,267 @@ function downloadPdf() {
     return;
   }
 
-  // Создаём отдельный контейнер для PDF (не трогаем DOM страницы)
-  const pdfContainer = document.createElement("div");
-  pdfContainer.id = "pdf-export";
-  pdfContainer.style.cssText = "position:absolute;left:-9999px;top:0;width:794px;background:#ffffff;color:#2D2D2D;font-family:Segoe UI,Roboto,Arial,sans-serif;font-size:13px;line-height:1.5;padding:0;";
-
-  // --- Заголовок ---
-  pdfContainer.innerHTML = buildPdfHtml();
-
-  document.body.appendChild(pdfContainer);
-
-  const opt = {
-    margin: [12, 14, 12, 14],
-    filename: "SONV-112_" + new Date().toISOString().split("T")[0] + ".pdf",
-    image: { type: "jpeg", quality: 0.98 },
-    html2canvas: {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: "#ffffff",
-      logging: false,
-      letterRendering: true
-    },
-    jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-    pagebreak: { mode: ["css"], avoid: [".pdf-block", ".pdf-scale", ".pdf-flag"] }
-  };
-
-  html2pdf().set(opt).from(pdfContainer).save().then(function () {
-    document.body.removeChild(pdfContainer);
-    showToast("PDF сохранён");
-  }).catch(function (err) {
-    console.error("PDF error:", err);
-    document.body.removeChild(pdfContainer);
+  if (!STATE.results) {
     downloadTextReport();
-  });
+    return;
+  }
+
+  // 1. Создаём затемнение (чтобы пользователь не видел мелькание)
+  var overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:99998;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-family:sans-serif;";
+  overlay.textContent = "Генерация PDF...";
+  document.body.appendChild(overlay);
+
+  // 2. Создаём контейнер для PDF — ВИДИМЫЙ, поверх всего
+  var pdfEl = document.createElement("div");
+  pdfEl.style.cssText = "position:fixed;top:0;left:0;width:794px;z-index:99999;background:#ffffff;color:#222222;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;padding:24px 28px;overflow:auto;max-height:100vh;";
+
+  // 3. Заполняем HTML
+  try {
+    pdfEl.innerHTML = buildPdfContent();
+  } catch (e) {
+    document.body.removeChild(overlay);
+    console.error("PDF build error:", e);
+    downloadTextReport();
+    return;
+  }
+
+  document.body.appendChild(pdfEl);
+
+  // 4. Ждём отрисовку браузером, затем захватываем
+  setTimeout(function () {
+    html2pdf().set({
+      margin: [10, 12, 10, 12],
+      filename: "SONV-112_" + new Date().toISOString().split("T")[0] + ".pdf",
+      image: { type: "jpeg", quality: 0.95 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        scrollY: 0,
+        windowWidth: 794
+      },
+      jsPDF: {
+        unit: "mm",
+        format: "a4",
+        orientation: "portrait"
+      },
+      pagebreak: {
+        mode: ["css"],
+        before: ".pdf-page-break-before",
+        avoid: [".pb-avoid"]
+      }
+    }).from(pdfEl).save().then(function () {
+      cleanup();
+      showToast("PDF сохранён");
+    }).catch(function (err) {
+      console.error("PDF save error:", err);
+      cleanup();
+      downloadTextReport();
+    });
+  }, 800);
+
+  function cleanup() {
+    if (pdfEl.parentNode) document.body.removeChild(pdfEl);
+    if (overlay.parentNode) document.body.removeChild(overlay);
+  }
 }
 
-function buildPdfHtml() {
-  if (!STATE.results) return "";
+function buildPdfContent() {
+  var R = STATE.results;
+  var sc = R.scales;
+  var interp = R.interpretation;
+  var flags = R.flags;
+  var recs = R.recommendations;
+  var date = new Date().toLocaleDateString("ru-RU");
 
-  const scales = STATE.results.scales;
-  const interp = STATE.results.interpretation;
-  const flags = STATE.results.flags;
-  const recs = STATE.results.recommendations;
-  const date = new Date().toLocaleDateString("ru-RU");
+  var h = "";
 
-  // Стили внутри PDF (инлайн, чтобы не зависеть от style.css)
-  const s = {
-    title: 'style="font-size:22px;font-weight:700;text-align:center;margin:0 0 4px 0;color:#2D2D2D;"',
-    subtitle: 'style="font-size:12px;text-align:center;color:#888;margin:0 0 4px 0;"',
-    date: 'style="font-size:11px;text-align:center;color:#999;margin:0 0 16px 0;"',
-    disclaimer: 'style="font-size:10px;color:#999;text-align:center;padding:8px 12px;border:1px solid #ddd;border-radius:6px;margin:0 0 20px 0;background:#f9f9f7;"',
-    sectionTitle: 'style="font-size:14px;font-weight:700;color:#4A6FA5;border-bottom:2px solid #4A6FA5;padding:0 0 4px 0;margin:20px 0 10px 0;"',
-    block: 'class="pdf-block" style="margin:0 0 12px 0;padding:10px 12px;border:1px solid #e0e0dc;border-radius:6px;background:#fafaf8;page-break-inside:avoid;"',
-    scaleRow: 'class="pdf-scale" style="margin:0 0 8px 0;padding:8px 10px;border:1px solid #eee;border-radius:4px;page-break-inside:avoid;"',
-    scaleName: 'style="font-size:12px;font-weight:600;color:#2D2D2D;margin:0 0 4px 0;"',
-    scaleValues: 'style="font-size:11px;color:#666;margin:0 0 4px 0;"',
-    bar: 'style="width:100%;height:6px;background:#e8e8e4;border-radius:3px;overflow:hidden;margin:0 0 2px 0;"',
-    subScale: 'style="margin:4px 0 0 16px;padding:4px 0 0 8px;border-left:2px solid #e0e0dc;font-size:11px;color:#666;"',
-    interpBlock: 'style="margin:0 0 10px 0;padding:10px 12px;border-left:3px solid #4A6FA5;background:#f5f7fa;border-radius:0 6px 6px 0;page-break-inside:avoid;"',
-    interpTitle: 'style="font-size:13px;font-weight:700;color:#2D2D2D;margin:0 0 4px 0;"',
-    interpText: 'style="font-size:11px;color:#555;line-height:1.6;margin:0 0 6px 0;"',
-    detail: 'style="margin:6px 0 0 0;padding:6px 8px;background:#eef1f5;border-radius:4px;font-size:11px;color:#555;"',
-    detailTitle: 'style="font-weight:700;color:#2D2D2D;margin:0 0 2px 0;font-size:11px;"',
-    flagCard: 'class="pdf-flag" style="display:flex;gap:8px;margin:0 0 8px 0;padding:8px 10px;border:1px solid #e0e0dc;border-radius:4px;page-break-inside:avoid;"',
-    flagTitle: 'style="font-size:12px;font-weight:700;color:#2D2D2D;margin:0 0 2px 0;"',
-    flagText: 'style="font-size:11px;color:#555;line-height:1.5;"',
-    recDo: 'style="font-size:11px;color:#555;padding:3px 0;line-height:1.5;"',
-    recDont: 'style="font-size:11px;color:#555;padding:3px 0;line-height:1.5;"',
-    recSpec: 'style="margin:10px 0 0 0;padding:8px 10px;background:#f0f0ec;border-radius:4px;font-size:11px;color:#555;"',
-    footer: 'style="margin:20px 0 0 0;padding:10px 0 0 0;border-top:1px solid #ddd;font-size:9px;color:#aaa;text-align:center;"'
-  };
+  // --- ШАПКА ---
+  h += '<div style="text-align:center;margin-bottom:16px;">';
+  h += '<div style="font-size:24px;font-weight:700;color:#2D2D2D;">СОНВ-112</div>';
+  h += '<div style="font-size:13px;color:#777;">Скрининговый опросник нейроотличности для взрослых</div>';
+  h += '<div style="font-size:11px;color:#999;margin-top:4px;">Дата: ' + date + '</div>';
+  h += '</div>';
 
-  let html = "";
+  // Дисклеймер
+  h += '<div class="pb-avoid" style="font-size:10px;color:#888;text-align:center;padding:8px 16px;border:1px solid #ddd;border-radius:6px;margin-bottom:20px;background:#f9f9f7;">';
+  h += '⚠️ Результат скринингового опросника — не диагностическое заключение. Диагноз ставит только специалист.';
+  h += '</div>';
 
-  // --- Шапка ---
-  html += `<div ${s.title}>СОНВ-112</div>`;
-  html += `<div ${s.subtitle}>Скрининговый опросник нейроотличности для взрослых</div>`;
-  html += `<div ${s.date}>Дата заполнения: ${date}</div>`;
-  html += `<div ${s.disclaimer}>⚠️ Данный документ — результат скринингового опросника, не диагностическое заключение. Диагноз может поставить только квалифицированный специалист.</div>`;
-
-  // --- Контрольные параметры ---
-  html += `<div ${s.sectionTitle}>⚙️ Контрольные параметры</div>`;
-  const controlKeys = ["L", "M", "K", "N"];
-  html += `<div ${s.block}>`;
-  for (const key of controlKeys) {
-    const sc = scales[key];
-    html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f0f0ec;">`;
-    html += `<span style="font-size:12px;color:#555;">${sc.name}</span>`;
-    html += `<span style="font-size:12px;font-weight:600;">${sc.zone.icon} ${sc.zone.label} (${sc.sum}/${sc.max})</span>`;
-    html += `</div>`;
+  // --- КОНТРОЛЬНЫЕ ПАРАМЕТРЫ ---
+  h += pdfSectionTitle("⚙️ Контрольные параметры");
+  h += '<div class="pb-avoid" style="margin-bottom:16px;">';
+  var ckeys = ["L", "M", "K", "N"];
+  for (var ci = 0; ci < ckeys.length; ci++) {
+    var cs = sc[ckeys[ci]];
+    h += '<div style="display:flex;justify-content:space-between;padding:5px 8px;';
+    if (ci < ckeys.length - 1) h += 'border-bottom:1px solid #f0f0ec;';
+    h += '">';
+    h += '<span style="color:#555;">' + cs.name + '</span>';
+    h += '<span style="font-weight:600;">' + cs.zone.icon + ' ' + cs.zone.label + ' <span style="color:#999;font-weight:400;">(' + cs.sum + '/' + cs.max + ')</span></span>';
+    h += '</div>';
   }
-  html += `</div>`;
+  h += '</div>';
 
   // Предупреждения валидности
-  if (STATE.results.validity.warnings.length > 0) {
-    for (const w of STATE.results.validity.warnings) {
-      html += `<div ${s.block} style="border-color:${w.type === 'critical' ? '#C75B5B' : '#E8C547'};">`;
-      html += `<div style="font-weight:700;font-size:12px;margin-bottom:4px;">${w.icon} ${w.title}</div>`;
-      html += `<div style="font-size:11px;color:#555;line-height:1.5;">${w.text}</div>`;
-      html += `</div>`;
-    }
+  var warnings = R.validity.warnings;
+  for (var wi = 0; wi < warnings.length; wi++) {
+    var w = warnings[wi];
+    var wcolor = w.type === "critical" ? "#C75B5B" : "#E8C547";
+    h += '<div class="pb-avoid" style="margin-bottom:10px;padding:8px 12px;border:1px solid ' + wcolor + ';border-radius:6px;background:#fefefe;">';
+    h += '<div style="font-weight:700;font-size:12px;margin-bottom:3px;">' + w.icon + ' ' + w.title + '</div>';
+    h += '<div style="font-size:11px;color:#555;line-height:1.5;">' + w.text + '</div>';
+    h += '</div>';
   }
 
-  // --- Основные шкалы ---
-  html += `<div ${s.sectionTitle}>📋 Результаты по шкалам</div>`;
-  const mainKeys = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
-  for (const key of mainKeys) {
-    const sc = scales[key];
-    const barColor = sc.zone.color;
-    html += `<div ${s.scaleRow}>`;
-    html += `<div ${s.scaleName}>${sc.name}</div>`;
-    html += `<div ${s.scaleValues}>${sc.percentage}% (${sc.sum}/${sc.max}) — ${sc.zone.icon} ${sc.zone.label}</div>`;
-    html += `<div ${s.bar}><div style="width:${sc.percentage}%;height:100%;background:${barColor};border-radius:3px;"></div></div>`;
+  // --- ОСНОВНЫЕ ШКАЛЫ ---
+  h += pdfSectionTitle("📋 Результаты по шкалам");
 
+  var mkeys = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
+  for (var mi = 0; mi < mkeys.length; mi++) {
+    var ms = sc[mkeys[mi]];
+    h += '<div class="pb-avoid" style="margin-bottom:8px;padding:7px 10px;border:1px solid #eee;border-radius:5px;">';
+    h += '<div style="font-weight:600;font-size:12px;color:#2D2D2D;margin-bottom:3px;">' + ms.name + '</div>';
+    h += '<div style="font-size:11px;color:#666;margin-bottom:4px;">';
+    h += ms.percentage + '% (' + ms.sum + '/' + ms.max + ') — ' + ms.zone.icon + ' ' + ms.zone.label;
+    h += '</div>';
+    // Бар
+    h += '<div style="width:100%;height:6px;background:#e8e8e4;border-radius:3px;overflow:hidden;">';
+    h += '<div style="width:' + ms.percentage + '%;height:100%;background:' + ms.zone.color + ';border-radius:3px;"></div>';
+    h += '</div>';
     // Суб-шкалы
-    for (const [subKey, sub] of Object.entries(sc.subscales)) {
-      html += `<div ${s.subScale}>`;
-      html += `└─ ${sub.name}: ${sub.percentage}% (${sub.sum}/${sub.max}) ${sub.zone.icon}`;
-      html += `</div>`;
+    var subKeys = Object.keys(ms.subscales);
+    for (var si = 0; si < subKeys.length; si++) {
+      var sub = ms.subscales[subKeys[si]];
+      h += '<div style="margin:4px 0 0 14px;padding:2px 0 2px 10px;border-left:2px solid #e0e0dc;font-size:11px;color:#666;">';
+      h += '└─ ' + sub.name + ': ' + sub.percentage + '% (' + sub.sum + '/' + sub.max + ') ' + sub.zone.icon;
+      h += '</div>';
     }
-
-    html += `</div>`;
+    h += '</div>';
   }
 
-  // --- Интерпретация ---
-  html += `<div ${s.sectionTitle}>🔍 Интерпретация</div>`;
+  // --- ИНТЕРПРЕТАЦИЯ ---
+  h += '<div class="pdf-page-break-before"></div>';
+  h += pdfSectionTitle("🔍 Интерпретация");
 
   // Сводка
-  html += `<div ${s.interpBlock}>`;
-  html += `<div ${s.interpTitle}>Сводка</div>`;
-  html += `<div ${s.interpText}>${interp.summary.replace(/\n/g, "<br>")}</div>`;
-  html += `</div>`;
+  h += '<div class="pb-avoid" style="margin-bottom:12px;padding:10px 14px;border-left:3px solid #4A6FA5;background:#f5f7fa;border-radius:0 6px 6px 0;">';
+  h += '<div style="font-weight:700;font-size:13px;margin-bottom:4px;">Сводка</div>';
+  h += '<div style="font-size:11px;color:#444;line-height:1.65;white-space:pre-line;">' + interp.summary + '</div>';
+  h += '</div>';
 
   // СДВГ
-  if (interp.adhd.title) {
-    html += buildPdfInterpBlock(interp.adhd, s);
+  if (interp.adhd && interp.adhd.title) {
+    h += pdfInterpBlock(interp.adhd);
   }
 
   // РАС
-  if (interp.asd.title) {
-    html += buildPdfInterpBlock(interp.asd, s);
+  if (interp.asd && interp.asd.title) {
+    h += pdfInterpBlock(interp.asd);
   }
 
   // Расстройства обучения
-  for (const item of interp.learning) {
-    html += buildPdfInterpBlock(item, s);
+  if (interp.learning) {
+    for (var li2 = 0; li2 < interp.learning.length; li2++) {
+      h += pdfInterpBlock(interp.learning[li2]);
+    }
   }
 
   // Коморбидность
-  for (const combo of interp.comorbidity) {
-    html += `<div ${s.interpBlock} style="border-left-color:#D98C4A;">`;
-    html += `<div ${s.interpTitle}>${combo.title}</div>`;
-    html += `<div ${s.interpText}>${combo.text}</div>`;
-    if (combo.interactions) {
-      for (const inter of combo.interactions) {
-        html += `<div ${s.detail}>`;
-        html += `<div ${s.detailTitle}>⚡ ${inter.title}</div>`;
-        html += `<div style="font-size:10px;color:#555;">${inter.text}</div>`;
-        html += `</div>`;
+  if (interp.comorbidity) {
+    for (var co = 0; co < interp.comorbidity.length; co++) {
+      var combo = interp.comorbidity[co];
+      h += '<div class="pb-avoid" style="margin-bottom:12px;padding:10px 14px;border:1px solid #D98C4A;border-radius:6px;background:#fdf8f0;">';
+      h += '<div style="font-weight:700;font-size:13px;color:#D98C4A;margin-bottom:6px;">' + combo.title + '</div>';
+      h += '<div style="font-size:11px;color:#555;line-height:1.6;margin-bottom:8px;">' + combo.text + '</div>';
+      if (combo.interactions) {
+        for (var ci2 = 0; ci2 < combo.interactions.length; ci2++) {
+          var inter = combo.interactions[ci2];
+          h += '<div style="margin-bottom:5px;padding:5px 8px;background:#fff;border-radius:4px;">';
+          h += '<div style="font-weight:700;font-size:11px;color:#2D2D2D;">⚡ ' + inter.title + '</div>';
+          h += '<div style="font-size:10px;color:#555;">' + inter.text + '</div>';
+          h += '</div>';
+        }
       }
-    }
-    html += `</div>`;
-  }
-
-  // --- Флаги ---
-  if (flags.length > 0) {
-    html += `<div ${s.sectionTitle}>⚠️ Обратите внимание</div>`;
-    for (const flag of flags) {
-      html += `<div ${s.flagCard}>`;
-      html += `<div>`;
-      html += `<div ${s.flagTitle}>${flag.icon} ${flag.title}</div>`;
-      html += `<div ${s.flagText}>${flag.text}</div>`;
-      html += `</div>`;
-      html += `</div>`;
+      h += '</div>';
     }
   }
 
-  // --- Рекомендации ---
-  html += `<div ${s.sectionTitle}>📌 Рекомендации</div>`;
-  html += `<div ${s.block}>`;
-  for (const item of recs.doList) {
-    html += `<div ${s.recDo}>✅ ${item}</div>`;
-  }
-  html += `<div style="height:8px;"></div>`;
-  for (const item of recs.dontList) {
-    html += `<div ${s.recDont}>❌ ${item}</div>`;
-  }
-  if (recs.specialistNotes.length > 0) {
-    html += `<div ${s.recSpec}>`;
-    html += `<div style="font-weight:700;font-size:11px;margin-bottom:4px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Заметки для специалиста</div>`;
-    for (const note of recs.specialistNotes) {
-      html += `<div style="padding:2px 0;">• ${note}</div>`;
+  // --- ФЛАГИ ---
+  if (flags && flags.length > 0) {
+    h += pdfSectionTitle("⚠️ Обратите внимание");
+    for (var fi = 0; fi < flags.length; fi++) {
+      var flag = flags[fi];
+      h += '<div class="pb-avoid" style="margin-bottom:8px;padding:8px 12px;border:1px solid #e0e0dc;border-radius:5px;">';
+      h += '<div style="font-weight:700;font-size:12px;color:#2D2D2D;margin-bottom:3px;">' + flag.icon + ' ' + flag.title + '</div>';
+      h += '<div style="font-size:11px;color:#555;line-height:1.55;">' + flag.text + '</div>';
+      h += '</div>';
     }
-    html += `</div>`;
   }
-  html += `</div>`;
 
-  // --- Футер ---
-  html += `<div ${s.footer}>`;
-  html += `СОНВ-112 v1.0 — скрининговый инструмент, не заменяет клиническую диагностику.<br>`;
-  html += `Основан на DSM-5, ASRS, RAADS-R, CAT-Q, AQ-50 и других валидированных методиках.`;
-  html += `</div>`;
+  // --- РЕКОМЕНДАЦИИ ---
+  h += pdfSectionTitle("📌 Рекомендации");
+  h += '<div class="pb-avoid" style="margin-bottom:16px;">';
+  for (var ri = 0; ri < recs.doList.length; ri++) {
+    h += '<div style="font-size:11px;color:#444;padding:3px 0;line-height:1.5;">✅ ' + recs.doList[ri] + '</div>';
+  }
+  h += '<div style="height:8px;"></div>';
+  for (var ri2 = 0; ri2 < recs.dontList.length; ri2++) {
+    h += '<div style="font-size:11px;color:#444;padding:3px 0;line-height:1.5;">❌ ' + recs.dontList[ri2] + '</div>';
+  }
 
-  return html;
+  // Заметки для специалиста
+  if (recs.specialistNotes && recs.specialistNotes.length > 0) {
+    h += '<div style="margin-top:10px;padding:8px 12px;background:#f0f0ec;border-radius:5px;">';
+    h += '<div style="font-weight:700;font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Заметки для специалиста</div>';
+    for (var ni = 0; ni < recs.specialistNotes.length; ni++) {
+      h += '<div style="font-size:11px;color:#555;padding:2px 0;">• ' + recs.specialistNotes[ni] + '</div>';
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+
+  // --- ФУТЕР ---
+  h += '<div style="margin-top:24px;padding-top:10px;border-top:1px solid #ddd;font-size:9px;color:#aaa;text-align:center;line-height:1.5;">';
+  h += 'СОНВ-112 v1.0 — скрининговый инструмент, не заменяет клиническую диагностику.<br>';
+  h += 'Основан на DSM-5, ASRS, RAADS-R, CAT-Q, AQ-50 и других валидированных методиках.';
+  h += '</div>';
+
+  return h;
 }
 
-function buildPdfInterpBlock(data, s) {
-  let html = `<div ${s.interpBlock}>`;
-  html += `<div ${s.interpTitle}>${data.title}`;
+function pdfSectionTitle(text) {
+  return '<div style="font-size:14px;font-weight:700;color:#4A6FA5;border-bottom:2px solid #4A6FA5;padding-bottom:4px;margin:20px 0 10px 0;">' + text + '</div>';
+}
+
+function pdfInterpBlock(data) {
+  var borderColor = "#4A6FA5";
+  if (data.present === false) borderColor = "#cccccc";
+
+  var h = '<div class="pb-avoid" style="margin-bottom:12px;padding:10px 14px;border-left:3px solid ' + borderColor + ';background:#f5f7fa;border-radius:0 6px 6px 0;">';
+  h += '<div style="font-weight:700;font-size:13px;color:#2D2D2D;margin-bottom:4px;">' + data.title;
   if (data.confidence) {
-    const confColor = data.confidence === "high" ? "#7BAE7F" :
-                      data.confidence === "moderate" ? "#E8C547" : "#D98C4A";
-    html += ` <span style="font-size:10px;padding:1px 6px;border-radius:3px;background:${confColor}22;color:${confColor};font-weight:600;">${getConfidenceLabel(data.confidence)}</span>`;
+    var confColors = { high: "#7BAE7F", moderate: "#E8C547", low: "#D98C4A" };
+    var cc = confColors[data.confidence] || "#999";
+    h += ' <span style="font-size:10px;padding:1px 6px;border-radius:3px;background:' + cc + '22;color:' + cc + ';font-weight:600;">' + getConfidenceLabel(data.confidence) + '</span>';
   }
-  html += `</div>`;
-  html += `<div ${s.interpText}>${data.text}</div>`;
+  h += '</div>';
+  h += '<div style="font-size:11px;color:#444;line-height:1.6;margin-bottom:6px;">' + data.text + '</div>';
 
   if (data.details) {
-    for (const detail of data.details) {
-      html += `<div ${s.detail}>`;
-      html += `<div ${s.detailTitle}>${detail.title}</div>`;
-      html += `<div style="font-size:10px;color:#555;line-height:1.5;">${detail.text}</div>`;
-      html += `</div>`;
+    for (var di = 0; di < data.details.length; di++) {
+      var det = data.details[di];
+      h += '<div style="margin-top:6px;padding:6px 10px;background:#eaecf0;border-radius:4px;">';
+      h += '<div style="font-weight:700;font-size:11px;color:#2D2D2D;margin-bottom:2px;">' + det.title + '</div>';
+      h += '<div style="font-size:10.5px;color:#555;line-height:1.5;">' + det.text + '</div>';
+      h += '</div>';
     }
   }
 
-  html += `</div>`;
-  return html;
+  h += '</div>';
+  return h;
 }
-
 // ------------------------------------------------------------
 // 13. КОПИРОВАНИЕ ССЫЛКИ
 // ------------------------------------------------------------
@@ -1529,5 +1561,6 @@ function createElement(tag, className, textContent) {
   return el;
 
 }
+
 
 

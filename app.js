@@ -921,20 +921,25 @@ function createRecommendationsSection(recs) {
 // --- Кнопки действий ---
 
 function createResultsActions() {
-  const actions = createElement("div", "results-actions");
+  var actions = createElement("div", "results-actions");
 
-  // PDF
-  const pdfBtn = createElement("button", "btn btn--primary", UI_TEXTS.results.downloadPdf);
+  // PDF (основная попытка)
+  var pdfBtn = createElement("button", "btn btn--primary", "📄 Скачать PDF");
   pdfBtn.addEventListener("click", downloadPdf);
   actions.appendChild(pdfBtn);
 
+  // HTML-отчёт (запасной вариант, всегда работает)
+  var htmlBtn = createElement("button", "btn btn--secondary", "📋 Скачать отчёт (HTML)");
+  htmlBtn.addEventListener("click", downloadHtmlReport);
+  actions.appendChild(htmlBtn);
+
   // Копировать ссылку
-  const linkBtn = createElement("button", "btn btn--secondary", UI_TEXTS.results.copyLink);
+  var linkBtn = createElement("button", "btn btn--secondary", UI_TEXTS.results.copyLink);
   linkBtn.addEventListener("click", copyLink);
   actions.appendChild(linkBtn);
 
   // Пройти заново
-  const restartBtn = createElement("button", "btn btn--ghost", UI_TEXTS.results.restart);
+  var restartBtn = createElement("button", "btn btn--ghost", UI_TEXTS.results.restart);
   restartBtn.addEventListener("click", function () {
     if (confirm("Начать тест заново? Текущие результаты останутся доступны по ссылке.")) {
       STATE.answers = {};
@@ -1645,4 +1650,5 @@ function createElement(tag, className, textContent) {
   if (textContent) el.textContent = textContent;
   return el;
 }
+
 

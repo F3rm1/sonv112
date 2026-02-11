@@ -717,12 +717,14 @@ body {
 .radar-container {
   display: flex;
   justify-content: center;
-  padding: 20px 0;
+  align-items: center;
+  padding: 16px 0;
+  width: 100%;
+  overflow: visible;
 }
 
 .radar-container canvas {
-  max-width: 100%;
-  max-height: 400px;
+  display: block;
 }
 
 /* --- Шкалы (бары) --- */
@@ -1426,4 +1428,5 @@ body {
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border) var(--bg-secondary);
+
 }

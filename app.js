@@ -923,13 +923,13 @@ function createRecommendationsSection(recs) {
 function createResultsActions() {
   var actions = createElement("div", "results-actions");
 
-  // PDF (основная попытка)
-  var pdfBtn = createElement("button", "btn btn--primary", "📄 Скачать PDF");
-  pdfBtn.addEventListener("click", downloadPdf);
+  // Главная кнопка: PDF через печать браузера
+  var pdfBtn = createElement("button", "btn btn--primary", "📄 Сохранить как PDF");
+  pdfBtn.addEventListener("click", openPrintableReport);
   actions.appendChild(pdfBtn);
 
-  // HTML-отчёт (запасной вариант, всегда работает)
-  var htmlBtn = createElement("button", "btn btn--secondary", "📋 Скачать отчёт (HTML)");
+  // Скачать HTML-файл
+  var htmlBtn = createElement("button", "btn btn--secondary", "📋 Скачать отчёт");
   htmlBtn.addEventListener("click", downloadHtmlReport);
   actions.appendChild(htmlBtn);
 
@@ -938,8 +938,13 @@ function createResultsActions() {
   linkBtn.addEventListener("click", copyLink);
   actions.appendChild(linkBtn);
 
+  // Текстовый отчёт
+  var txtBtn = createElement("button", "btn btn--ghost btn--small", "📝 Текстовый отчёт");
+  txtBtn.addEventListener("click", downloadTextReport);
+  actions.appendChild(txtBtn);
+
   // Пройти заново
-  var restartBtn = createElement("button", "btn btn--ghost", UI_TEXTS.results.restart);
+  var restartBtn = createElement("button", "btn btn--ghost btn--small", UI_TEXTS.results.restart);
   restartBtn.addEventListener("click", function () {
     if (confirm("Начать тест заново? Текущие результаты останутся доступны по ссылке.")) {
       STATE.answers = {};
@@ -1181,146 +1186,34 @@ function drawRadarChart(canvas, scales) {
 }
 
 // ------------------------------------------------------------
-// 12. PDF / ЭКСПОРТ
+// 12. ЭКСПОРТ РЕЗУЛЬТАТОВ
 // ------------------------------------------------------------
 
-function downloadPdf() {
+function openPrintableReport() {
   if (!STATE.results) return;
 
-  // Проверяем, загрузилась ли библиотека
-  if (typeof html2pdf === "undefined") {
-    downloadHtmlReport();
+  var content = buildReportHtml();
+  var win = window.open("", "_blank");
+
+  if (!win) {
+    showToast("Браузер заблокировал всплывающее окно. Разрешите и попробуйте снова.");
     return;
   }
 
-  var app = document.getElementById("app");
+  win.document.write(content);
+  win.document.close();
 
-  // 1. Оверлей с сообщением
-  var overlay = document.createElement("div");
-  overlay.style.cssText = [
-    "position:fixed", "top:0", "left:0", "right:0", "bottom:0",
-    "background:rgba(255,255,255,0.97)", "z-index:100000",
-    "display:flex", "align-items:center", "justify-content:center",
-    "font-size:18px", "color:#333", "font-family:Arial,sans-serif"
-  ].join(";");
-  overlay.textContent = "⏳ Генерация PDF, подождите...";
-  document.body.appendChild(overlay);
-
-  // 2. Прячем приложение
-  app.style.display = "none";
-
-  // 3. Создаём элемент В ОБЫЧНОМ ПОТОКЕ (не fixed, не absolute)
-  var pdfEl = document.createElement("div");
-  pdfEl.style.cssText = [
-    "width:760px", "margin:0 auto", "padding:24px 28px",
-    "background:#ffffff", "color:#222222",
-    "font-family:Arial,Helvetica,sans-serif",
-    "font-size:13px", "line-height:1.5"
-  ].join(";");
-
-  try {
-    pdfEl.innerHTML = buildPdfContent();
-  } catch (err) {
-    console.error("PDF build error:", err);
-    cleanup();
-    downloadHtmlReport();
-    return;
-  }
-
-  // 4. Вставляем ПЕРЕД app (в обычный поток документа)
-  document.body.insertBefore(pdfEl, app);
-
-  // 5. Скролл наверх
-  window.scrollTo(0, 0);
-
-  // 6. Ждём полной отрисовки браузером, затем захватываем
+  // Даём время на отрисовку, затем вызываем печать
   setTimeout(function () {
-    try {
-      html2pdf().set({
-        margin: [8, 10, 8, 10],
-        filename: "SONV-112_" + new Date().toISOString().split("T")[0] + ".pdf",
-        image: { type: "jpeg", quality: 0.95 },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: "#ffffff",
-          scrollX: 0,
-          scrollY: 0,
-          windowWidth: 810
-        },
-        jsPDF: {
-          unit: "mm",
-          format: "a4",
-          orientation: "portrait"
-        },
-        pagebreak: {
-          mode: ["css"],
-          avoid: [".pb-avoid"]
-        }
-      }).from(pdfEl).save().then(function () {
-        cleanup();
-        showToast("PDF сохранён");
-      }).catch(function (err) {
-        console.error("html2pdf error:", err);
-        cleanup();
-        downloadHtmlReport();
-      });
-    } catch (err2) {
-      console.error("html2pdf crash:", err2);
-      cleanup();
-      downloadHtmlReport();
-    }
-  }, 1200);
-
-  function cleanup() {
-    if (pdfEl && pdfEl.parentNode) pdfEl.parentNode.removeChild(pdfEl);
-    if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
-    app.style.display = "";
-    window.scrollTo(0, 0);
-  }
+    win.print();
+  }, 600);
 }
-
-// ---- Запасной вариант: красивый HTML-файл ----
 
 function downloadHtmlReport() {
   if (!STATE.results) return;
 
-  var content = buildPdfContent();
-
-  var fullHtml = [
-    "<!DOCTYPE html>",
-    '<html lang="ru">',
-    "<head>",
-    '<meta charset="UTF-8">',
-    '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
-    "<title>СОНВ-112 — Результаты</title>",
-    "<style>",
-    "  body { font-family: Arial, Helvetica, sans-serif; font-size: 13px;",
-    "    line-height: 1.5; color: #222; max-width: 760px; margin: 0 auto;",
-    "    padding: 24px 28px; background: #fff; }",
-    "  .no-print { margin-bottom: 20px; padding: 12px 16px;",
-    "    background: #f0f5ff; border: 1px solid #c0d0e8; border-radius: 8px;",
-    "    text-align: center; }",
-    "  .no-print button { padding: 10px 24px; font-size: 14px;",
-    "    font-weight: 600; background: #4A6FA5; color: #fff;",
-    "    border: none; border-radius: 6px; cursor: pointer; }",
-    "  .no-print button:hover { background: #3A5F95; }",
-    "  @media print { .no-print { display: none !important; } }",
-    "  .pb-avoid { page-break-inside: avoid; }",
-    "  .pdf-page-break-before { page-break-before: always; }",
-    "</style>",
-    "</head>",
-    "<body>",
-    '<div class="no-print">',
-    "  <p>Чтобы сохранить как PDF: нажмите кнопку ниже или Ctrl+P → «Сохранить как PDF»</p>",
-    "  <button onclick=\"window.print()\">🖨️ Печать / Сохранить PDF</button>",
-    "</div>",
-    content,
-    "</body>",
-    "</html>"
-  ].join("\n");
-
-  var blob = new Blob([fullHtml], { type: "text/html;charset=utf-8" });
+  var content = buildReportHtml();
+  var blob = new Blob([content], { type: "text/html;charset=utf-8" });
   var url = URL.createObjectURL(blob);
   var a = document.createElement("a");
   a.href = url;
@@ -1329,10 +1222,8 @@ function downloadHtmlReport() {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  showToast("Отчёт сохранён как HTML. Откройте файл и нажмите «Печать» для PDF.");
+  showToast("Отчёт сохранён. Откройте файл в браузере для просмотра.");
 }
-
-// ---- Текстовый отчёт (последний запасной вариант) ----
 
 function downloadTextReport() {
   if (!STATE.results) return;
@@ -1349,9 +1240,9 @@ function downloadTextReport() {
   showToast("Текстовый отчёт сохранён");
 }
 
-// ---- Построение HTML-контента для PDF/HTML отчёта ----
+// ---- Построение полного HTML-документа отчёта ----
 
-function buildPdfContent() {
+function buildReportHtml() {
   var R = STATE.results;
   var sc = R.scales;
   var interp = R.interpretation;
@@ -1359,88 +1250,102 @@ function buildPdfContent() {
   var recs = R.recommendations;
   var date = new Date().toLocaleDateString("ru-RU");
 
-  var h = "";
+  // Собираем полный HTML-документ
+  var doc = "";
+  doc += "<!DOCTYPE html>\n";
+  doc += '<html lang="ru">\n<head>\n';
+  doc += '<meta charset="UTF-8">\n';
+  doc += '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n';
+  doc += "<title>СОНВ-112 — Результаты (" + date + ")</title>\n";
+  doc += "<style>\n";
+  doc += reportStyles();
+  doc += "\n</style>\n";
+  doc += "</head>\n<body>\n";
+
+  // Кнопка печати (не будет видна при печати)
+  doc += '<div class="no-print" style="text-align:center;margin-bottom:20px;padding:14px;background:#f0f5ff;border:1px solid #c0d0e8;border-radius:8px;">';
+  doc += '<p style="margin:0 0 10px 0;font-size:14px;color:#555;">Для сохранения в PDF: нажмите кнопку ниже или Ctrl+P</p>';
+  doc += '<button onclick="window.print()" style="padding:10px 28px;font-size:14px;font-weight:600;background:#4A6FA5;color:#fff;border:none;border-radius:6px;cursor:pointer;">Сохранить как PDF</button>';
+  doc += '</div>\n';
 
   // ШАПКА
-  h += '<div style="text-align:center;margin-bottom:16px;">';
-  h += '<div style="font-size:24px;font-weight:700;color:#2D2D2D;">СОНВ-112</div>';
-  h += '<div style="font-size:13px;color:#777;">Скрининговый опросник нейроотличности для взрослых</div>';
-  h += '<div style="font-size:11px;color:#999;margin-top:4px;">Дата: ' + date + '</div>';
-  h += '</div>';
+  doc += '<div class="report-header">';
+  doc += '<div class="report-title">СОНВ-112</div>';
+  doc += '<div class="report-subtitle">Скрининговый опросник нейроотличности для взрослых</div>';
+  doc += '<div class="report-date">Дата: ' + date + '</div>';
+  doc += '</div>\n';
 
-  h += '<div class="pb-avoid" style="font-size:10px;color:#888;text-align:center;padding:8px 16px;border:1px solid #ddd;border-radius:6px;margin-bottom:20px;background:#f9f9f7;">';
-  h += 'Результат скринингового опросника. Не является диагнозом. Интерпретация специалистом обязательна.';
-  h += '</div>';
+  // Дисклеймер
+  doc += '<div class="disclaimer-box">';
+  doc += 'Результат скринингового опросника. Не является диагнозом. Интерпретация специалистом обязательна.';
+  doc += '</div>\n';
 
   // КОНТРОЛЬНЫЕ ПАРАМЕТРЫ
-  h += sectionTitle("Контрольные параметры");
-  h += '<div class="pb-avoid" style="margin-bottom:16px;">';
+  doc += sTitle("Контрольные параметры");
+  doc += '<div class="card">';
   var ck = ["L", "M", "K", "N"];
   for (var i = 0; i < ck.length; i++) {
     var cs = sc[ck[i]];
-    h += '<div style="display:flex;justify-content:space-between;padding:5px 8px;';
-    if (i < ck.length - 1) h += 'border-bottom:1px solid #f0f0ec;';
-    h += '">';
-    h += '<span style="color:#555;">' + cs.name + '</span>';
-    h += '<span style="font-weight:600;">' + cs.zone.icon + ' ' + cs.zone.label;
-    h += ' <span style="color:#999;font-weight:400;">(' + cs.sum + '/' + cs.max + ')</span></span>';
-    h += '</div>';
+    doc += '<div class="param-row' + (i < ck.length - 1 ? " bordered" : "") + '">';
+    doc += '<span class="param-name">' + cs.name + '</span>';
+    doc += '<span class="param-value">' + cs.zone.icon + ' ' + cs.zone.label;
+    doc += ' <span class="param-score">(' + cs.sum + '/' + cs.max + ')</span></span>';
+    doc += '</div>';
   }
-  h += '</div>';
+  doc += '</div>\n';
 
   // Предупреждения
   var warnings = R.validity.warnings;
   for (var wi = 0; wi < warnings.length; wi++) {
     var w = warnings[wi];
     var wc = w.type === "critical" ? "#C75B5B" : "#E8C547";
-    h += '<div class="pb-avoid" style="margin-bottom:10px;padding:8px 12px;border:1px solid ' + wc + ';border-radius:6px;">';
-    h += '<div style="font-weight:700;font-size:12px;margin-bottom:3px;">' + w.icon + ' ' + w.title + '</div>';
-    h += '<div style="font-size:11px;color:#555;line-height:1.5;">' + w.text + '</div>';
-    h += '</div>';
+    doc += '<div class="card" style="border-color:' + wc + ';">';
+    doc += '<div class="warning-title">' + w.icon + ' ' + w.title + '</div>';
+    doc += '<div class="small-text">' + w.text + '</div>';
+    doc += '</div>';
   }
 
-  // ОСНОВНЫЕ ШКАЛЫ
-  h += sectionTitle("Результаты по шкалам");
+  // ШКАЛЫ
+  doc += sTitle("Результаты по шкалам");
   var mk = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
   for (var mi = 0; mi < mk.length; mi++) {
     var ms = sc[mk[mi]];
-    h += '<div class="pb-avoid" style="margin-bottom:8px;padding:7px 10px;border:1px solid #eee;border-radius:5px;">';
-    h += '<div style="font-weight:600;font-size:12px;color:#2D2D2D;margin-bottom:3px;">' + ms.name + '</div>';
-    h += '<div style="font-size:11px;color:#666;margin-bottom:4px;">';
-    h += ms.percentage + '% (' + ms.sum + '/' + ms.max + ') — ' + ms.zone.icon + ' ' + ms.zone.label;
-    h += '</div>';
-    h += '<div style="width:100%;height:6px;background:#e8e8e4;border-radius:3px;overflow:hidden;">';
-    h += '<div style="width:' + ms.percentage + '%;height:100%;background:' + ms.zone.color + ';border-radius:3px;"></div>';
-    h += '</div>';
+    doc += '<div class="scale-card">';
+    doc += '<div class="scale-name">' + ms.name + '</div>';
+    doc += '<div class="scale-values">' + ms.percentage + '% (' + ms.sum + '/' + ms.max + ') — ' + ms.zone.icon + ' ' + ms.zone.label + '</div>';
+    doc += '<div class="bar-bg"><div class="bar-fill" style="width:' + ms.percentage + '%;background:' + ms.zone.color + ';"></div></div>';
     var subKeys = Object.keys(ms.subscales);
     for (var si = 0; si < subKeys.length; si++) {
       var sub = ms.subscales[subKeys[si]];
-      h += '<div style="margin:4px 0 0 14px;padding:2px 0 2px 10px;border-left:2px solid #e0e0dc;font-size:11px;color:#666;">';
-      h += sub.name + ': ' + sub.percentage + '% (' + sub.sum + '/' + sub.max + ') ' + sub.zone.icon;
-      h += '</div>';
+      doc += '<div class="sub-scale">' + sub.name + ': ' + sub.percentage + '% (' + sub.sum + '/' + sub.max + ') ' + sub.zone.icon + '</div>';
     }
-    h += '</div>';
+    doc += '</div>';
   }
 
   // ИНТЕРПРЕТАЦИЯ
-  h += '<div class="pdf-page-break-before"></div>';
-  h += sectionTitle("Интерпретация");
+  doc += '<div class="page-break"></div>';
+  doc += sTitle("Интерпретация");
 
   // Сводка
-  h += '<div class="pb-avoid" style="margin-bottom:12px;padding:10px 14px;border-left:3px solid #4A6FA5;background:#f5f7fa;border-radius:0 6px 6px 0;">';
-  h += '<div style="font-weight:700;font-size:13px;margin-bottom:4px;">Сводка</div>';
-  h += '<div style="font-size:11px;color:#444;line-height:1.65;white-space:pre-line;">' + interp.summary + '</div>';
-  h += '</div>';
+  doc += '<div class="interp-card accent-border">';
+  doc += '<div class="interp-title">Сводка</div>';
+  doc += '<div class="interp-text" style="white-space:pre-line;">' + interp.summary + '</div>';
+  doc += '</div>';
 
+  // СДВГ
   if (interp.adhd && interp.adhd.title) {
-    h += interpBlock(interp.adhd);
+    doc += iBlock(interp.adhd);
   }
+
+  // РАС
   if (interp.asd && interp.asd.title) {
-    h += interpBlock(interp.asd);
+    doc += iBlock(interp.asd);
   }
+
+  // Расстройства обучения
   if (interp.learning) {
     for (var li = 0; li < interp.learning.length; li++) {
-      h += interpBlock(interp.learning[li]);
+      doc += iBlock(interp.learning[li]);
     }
   }
 
@@ -1448,92 +1353,162 @@ function buildPdfContent() {
   if (interp.comorbidity) {
     for (var ci = 0; ci < interp.comorbidity.length; ci++) {
       var combo = interp.comorbidity[ci];
-      h += '<div class="pb-avoid" style="margin-bottom:12px;padding:10px 14px;border:1px solid #D98C4A;border-radius:6px;background:#fdf8f0;">';
-      h += '<div style="font-weight:700;font-size:13px;color:#D98C4A;margin-bottom:6px;">' + combo.title + '</div>';
-      h += '<div style="font-size:11px;color:#555;line-height:1.6;margin-bottom:8px;">' + combo.text + '</div>';
+      doc += '<div class="comorbidity-card">';
+      doc += '<div class="comorbidity-title">' + combo.title + '</div>';
+      doc += '<div class="small-text" style="margin-bottom:8px;">' + combo.text + '</div>';
       if (combo.interactions) {
         for (var ii = 0; ii < combo.interactions.length; ii++) {
           var inter = combo.interactions[ii];
-          h += '<div style="margin-bottom:5px;padding:5px 8px;background:#fff;border-radius:4px;">';
-          h += '<div style="font-weight:700;font-size:11px;color:#2D2D2D;">' + inter.title + '</div>';
-          h += '<div style="font-size:10px;color:#555;">' + inter.text + '</div>';
-          h += '</div>';
+          doc += '<div class="interaction">';
+          doc += '<div class="interaction-title">' + inter.title + '</div>';
+          doc += '<div class="interaction-text">' + inter.text + '</div>';
+          doc += '</div>';
         }
       }
-      h += '</div>';
+      doc += '</div>';
     }
   }
 
   // ФЛАГИ
   if (flags && flags.length > 0) {
-    h += sectionTitle("Обратите внимание");
+    doc += sTitle("Обратите внимание");
     for (var fi = 0; fi < flags.length; fi++) {
       var flag = flags[fi];
-      h += '<div class="pb-avoid" style="margin-bottom:8px;padding:8px 12px;border:1px solid #e0e0dc;border-radius:5px;">';
-      h += '<div style="font-weight:700;font-size:12px;color:#2D2D2D;margin-bottom:3px;">' + flag.icon + ' ' + flag.title + '</div>';
-      h += '<div style="font-size:11px;color:#555;line-height:1.55;">' + flag.text + '</div>';
-      h += '</div>';
+      doc += '<div class="flag-card">';
+      doc += '<div class="flag-title">' + flag.icon + ' ' + flag.title + '</div>';
+      doc += '<div class="small-text">' + flag.text + '</div>';
+      doc += '</div>';
     }
   }
 
   // РЕКОМЕНДАЦИИ
-  h += sectionTitle("Рекомендации");
-  h += '<div class="pb-avoid" style="margin-bottom:16px;">';
+  doc += sTitle("Рекомендации");
+  doc += '<div class="card">';
   for (var ri = 0; ri < recs.doList.length; ri++) {
-    h += '<div style="font-size:11px;color:#444;padding:3px 0;line-height:1.5;">' + recs.doList[ri] + '</div>';
+    doc += '<div class="rec-item">' + recs.doList[ri] + '</div>';
   }
-  h += '<div style="height:10px;"></div>';
+  doc += '<div style="height:10px;"></div>';
   for (var ri2 = 0; ri2 < recs.dontList.length; ri2++) {
-    h += '<div style="font-size:11px;color:#444;padding:3px 0;line-height:1.5;">' + recs.dontList[ri2] + '</div>';
+    doc += '<div class="rec-item">' + recs.dontList[ri2] + '</div>';
   }
   if (recs.specialistNotes && recs.specialistNotes.length > 0) {
-    h += '<div style="margin-top:10px;padding:8px 12px;background:#f0f0ec;border-radius:5px;">';
-    h += '<div style="font-weight:700;font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Заметки для специалиста</div>';
+    doc += '<div class="specialist-box">';
+    doc += '<div class="specialist-title">Заметки для специалиста</div>';
     for (var ni = 0; ni < recs.specialistNotes.length; ni++) {
-      h += '<div style="font-size:11px;color:#555;padding:2px 0;">' + recs.specialistNotes[ni] + '</div>';
+      doc += '<div class="specialist-note">' + recs.specialistNotes[ni] + '</div>';
     }
-    h += '</div>';
+    doc += '</div>';
   }
-  h += '</div>';
+  doc += '</div>';
 
   // ФУТЕР
-  h += '<div style="margin-top:24px;padding-top:10px;border-top:1px solid #ddd;font-size:9px;color:#aaa;text-align:center;line-height:1.5;">';
-  h += 'СОНВ-112 v1.0. Скрининговый инструмент, не заменяет клиническую диагностику.<br>';
-  h += 'Основан на DSM-5, ASRS, RAADS-R, CAT-Q, AQ-50.';
-  h += '</div>';
+  doc += '<div class="report-footer">';
+  doc += 'СОНВ-112 v1.0. Скрининговый инструмент, не заменяет клиническую диагностику.<br>';
+  doc += 'Основан на DSM-5, ASRS, RAADS-R, CAT-Q, AQ-50.';
+  doc += '</div>';
 
-  return h;
+  doc += "\n</body>\n</html>";
+  return doc;
 
   // --- Локальные хелперы ---
 
-  function sectionTitle(text) {
-    return '<div style="font-size:14px;font-weight:700;color:#4A6FA5;border-bottom:2px solid #4A6FA5;padding-bottom:4px;margin:20px 0 10px 0;">' + text + '</div>';
+  function sTitle(text) {
+    return '<div class="section-title">' + text + '</div>';
   }
 
-  function interpBlock(data) {
-    var bc = "#4A6FA5";
-    if (data.present === false) bc = "#cccccc";
-    var out = '<div class="pb-avoid" style="margin-bottom:12px;padding:10px 14px;border-left:3px solid ' + bc + ';background:#f5f7fa;border-radius:0 6px 6px 0;">';
-    out += '<div style="font-weight:700;font-size:13px;color:#2D2D2D;margin-bottom:4px;">' + data.title;
+  function iBlock(data) {
+    var bc = data.present === false ? "#cccccc" : "#4A6FA5";
+    var out = '<div class="interp-card" style="border-left-color:' + bc + ';">';
+    out += '<div class="interp-title">' + data.title;
     if (data.confidence) {
-      var cc = { high: "#7BAE7F", moderate: "#E8C547", low: "#D98C4A" };
-      var c = cc[data.confidence] || "#999";
-      out += ' <span style="font-size:10px;padding:1px 6px;border-radius:3px;background:' + c + '22;color:' + c + ';font-weight:600;">' + getConfidenceLabel(data.confidence) + '</span>';
+      var colors = { high: "#7BAE7F", moderate: "#c8a820", low: "#D98C4A" };
+      var c = colors[data.confidence] || "#999";
+      out += ' <span class="confidence-badge" style="background:' + c + '20;color:' + c + ';">' + getConfidenceLabel(data.confidence) + '</span>';
     }
     out += '</div>';
-    out += '<div style="font-size:11px;color:#444;line-height:1.6;margin-bottom:6px;">' + data.text + '</div>';
+    out += '<div class="interp-text">' + data.text + '</div>';
     if (data.details) {
       for (var d = 0; d < data.details.length; d++) {
         var det = data.details[d];
-        out += '<div style="margin-top:6px;padding:6px 10px;background:#eaecf0;border-radius:4px;">';
-        out += '<div style="font-weight:700;font-size:11px;color:#2D2D2D;margin-bottom:2px;">' + det.title + '</div>';
-        out += '<div style="font-size:10.5px;color:#555;line-height:1.5;">' + det.text + '</div>';
+        out += '<div class="detail-box">';
+        out += '<div class="detail-title">' + det.title + '</div>';
+        out += '<div class="detail-text">' + det.text + '</div>';
         out += '</div>';
       }
     }
     out += '</div>';
     return out;
   }
+}
+
+// ---- CSS для отчёта (встроен в HTML) ----
+
+function reportStyles() {
+  return [
+    "* { box-sizing: border-box; margin: 0; padding: 0; }",
+    "body { font-family: Arial, Helvetica, sans-serif; font-size: 13px; line-height: 1.55; color: #222; max-width: 760px; margin: 0 auto; padding: 20px 24px; background: #fff; }",
+
+    ".report-header { text-align: center; margin-bottom: 16px; }",
+    ".report-title { font-size: 26px; font-weight: 700; color: #2D2D2D; }",
+    ".report-subtitle { font-size: 13px; color: #777; margin-top: 2px; }",
+    ".report-date { font-size: 11px; color: #999; margin-top: 4px; }",
+
+    ".disclaimer-box { font-size: 10px; color: #888; text-align: center; padding: 8px 16px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 20px; background: #f9f9f7; }",
+
+    ".section-title { font-size: 15px; font-weight: 700; color: #4A6FA5; border-bottom: 2px solid #4A6FA5; padding-bottom: 4px; margin: 22px 0 10px 0; }",
+
+    ".card { margin-bottom: 14px; padding: 10px 14px; border: 1px solid #e8e8e4; border-radius: 6px; page-break-inside: avoid; }",
+
+    ".param-row { display: flex; justify-content: space-between; padding: 5px 0; }",
+    ".param-row.bordered { border-bottom: 1px solid #f0f0ec; }",
+    ".param-name { color: #555; }",
+    ".param-value { font-weight: 600; }",
+    ".param-score { color: #999; font-weight: 400; font-size: 11px; }",
+
+    ".warning-title { font-weight: 700; font-size: 12px; margin-bottom: 4px; }",
+
+    ".small-text { font-size: 11px; color: #555; line-height: 1.6; }",
+
+    ".scale-card { margin-bottom: 8px; padding: 8px 12px; border: 1px solid #eee; border-radius: 5px; page-break-inside: avoid; }",
+    ".scale-name { font-weight: 600; font-size: 12px; color: #2D2D2D; margin-bottom: 3px; }",
+    ".scale-values { font-size: 11px; color: #666; margin-bottom: 4px; }",
+    ".bar-bg { width: 100%; height: 6px; background: #e8e8e4; border-radius: 3px; overflow: hidden; }",
+    ".bar-fill { height: 100%; border-radius: 3px; }",
+    ".sub-scale { margin: 4px 0 0 14px; padding: 2px 0 2px 10px; border-left: 2px solid #e0e0dc; font-size: 11px; color: #666; }",
+
+    ".interp-card { margin-bottom: 12px; padding: 10px 14px; border-left: 3px solid #4A6FA5; background: #f5f7fa; border-radius: 0 6px 6px 0; page-break-inside: avoid; }",
+    ".interp-card.accent-border { border-left-color: #4A6FA5; }",
+    ".interp-title { font-weight: 700; font-size: 13px; color: #2D2D2D; margin-bottom: 5px; }",
+    ".interp-text { font-size: 11px; color: #444; line-height: 1.65; margin-bottom: 6px; }",
+
+    ".confidence-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600; }",
+
+    ".detail-box { margin-top: 6px; padding: 6px 10px; background: #eaecf0; border-radius: 4px; }",
+    ".detail-title { font-weight: 700; font-size: 11px; color: #2D2D2D; margin-bottom: 2px; }",
+    ".detail-text { font-size: 10.5px; color: #555; line-height: 1.5; }",
+
+    ".comorbidity-card { margin-bottom: 12px; padding: 10px 14px; border: 1px solid #D98C4A; border-radius: 6px; background: #fdf8f0; page-break-inside: avoid; }",
+    ".comorbidity-title { font-weight: 700; font-size: 13px; color: #D98C4A; margin-bottom: 6px; }",
+    ".interaction { margin-bottom: 5px; padding: 5px 8px; background: #fff; border-radius: 4px; }",
+    ".interaction-title { font-weight: 700; font-size: 11px; color: #2D2D2D; }",
+    ".interaction-text { font-size: 10px; color: #555; }",
+
+    ".flag-card { margin-bottom: 8px; padding: 8px 12px; border: 1px solid #e0e0dc; border-radius: 5px; page-break-inside: avoid; }",
+    ".flag-title { font-weight: 700; font-size: 12px; color: #2D2D2D; margin-bottom: 3px; }",
+
+    ".rec-item { font-size: 11px; color: #444; padding: 3px 0; line-height: 1.5; }",
+
+    ".specialist-box { margin-top: 10px; padding: 8px 12px; background: #f0f0ec; border-radius: 5px; }",
+    ".specialist-title { font-weight: 700; font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }",
+    ".specialist-note { font-size: 11px; color: #555; padding: 2px 0; }",
+
+    ".report-footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 9px; color: #aaa; text-align: center; line-height: 1.5; }",
+
+    ".page-break { page-break-before: always; height: 0; margin: 0; padding: 0; }",
+
+    "@media print { .no-print { display: none !important; } body { padding: 10px 16px; } }",
+    "@media screen { body { box-shadow: 0 0 20px rgba(0,0,0,0.1); margin-top: 20px; margin-bottom: 40px; padding: 32px 36px; border-radius: 8px; } }"
+  ].join("\n");
 }
 
 // ------------------------------------------------------------
@@ -1650,5 +1625,6 @@ function createElement(tag, className, textContent) {
   if (textContent) el.textContent = textContent;
   return el;
 }
+
 
 

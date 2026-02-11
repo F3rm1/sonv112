@@ -1165,7 +1165,8 @@ body {
 
 /* --- Раскрывающийся блок «Методология» --- */
 .methodology-section {
-  margin-top: 8px;
+  margin-top: 28px;
+  width: 100%;
 }
 
 .methodology-toggle {
@@ -1199,6 +1200,7 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   animation: fadeIn var(--transition-slow);
+  text-align: left;
 }
 
 .methodology-content.open {
@@ -1209,7 +1211,8 @@ body {
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--text-primary);
-  margin: 16px 0 8px 0;
+  margin: 18px 0 8px 0;
+  text-align: center;
 }
 
 .methodology-content h3:first-child {
@@ -1221,20 +1224,26 @@ body {
   color: var(--text-secondary);
   line-height: 1.65;
   margin-bottom: 8px;
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
 }
 
 .methodology-content ul {
   list-style: none;
   margin-bottom: 12px;
+  padding: 0;
 }
 
 .methodology-content li {
   font-size: 0.85rem;
   color: var(--text-secondary);
   line-height: 1.55;
-  padding: 4px 0;
-  padding-left: 16px;
+  padding: 4px 0 4px 16px;
   position: relative;
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
 }
 
 .methodology-content li::before {
@@ -1249,8 +1258,8 @@ body {
   font-size: 0.8rem !important;
   color: var(--text-muted) !important;
   line-height: 1.5 !important;
-  padding: 3px 0 !important;
-  padding-left: 20px !important;
+  padding: 3px 0 3px 20px !important;
+  text-align: left !important;
 }
 
 .methodology-ref::before {
@@ -1288,6 +1297,7 @@ body {
   color: var(--text-secondary);
   vertical-align: top;
   line-height: 1.4;
+  text-align: left;
 }
 
 .methodology-scale-table td:first-child {
@@ -1298,12 +1308,14 @@ body {
 }
 
 @media (max-width: 480px) {
-  .results-actions__main {
-    flex-direction: column;
-  }
-
   .methodology-scale-table td:first-child {
     white-space: normal;
+  }
+
+  .methodology-content p,
+  .methodology-content li {
+    text-align: left;
+    hyphens: none;
   }
 }
 
@@ -1631,6 +1643,7 @@ body {
   scrollbar-color: var(--border) var(--bg-secondary);
 
 }
+
 
 
 

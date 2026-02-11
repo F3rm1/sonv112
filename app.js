@@ -621,13 +621,13 @@ function createControlSection(scales, validity) {
 // --- Радарная диаграмма ---
 
 function createRadarSection(scales) {
-  const canvas = document.createElement("canvas");
-  canvas.id = "radarChart";
+  const section = createElement("div", "results-section");
+  const header = createElement("div", "results-section__header", "📊 " + UI_TEXTS.results.profileHeading);
+  const body = createElement("div", "results-section__body");
+  const container = createElement("div", "radar-container");
 
   const canvas = document.createElement("canvas");
   canvas.id = "radarChart";
-  canvas.style.width = "100%";
-  canvas.style.maxWidth = "600px";
   container.appendChild(canvas);
   body.appendChild(container);
   section.appendChild(header);
@@ -1446,6 +1446,7 @@ function pdfInterpBlock(data) {
   h += '</div>';
   return h;
 }
+
 // ------------------------------------------------------------
 // 13. КОПИРОВАНИЕ ССЫЛКИ
 // ------------------------------------------------------------
@@ -1559,8 +1560,4 @@ function createElement(tag, className, textContent) {
   if (className) el.className = className;
   if (textContent) el.textContent = textContent;
   return el;
-
 }
-
-
-

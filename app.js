@@ -1,0 +1,1275 @@
+// ============================================================
+// app.js — Логика приложения СОНВ-112
+// ============================================================
+
+// ------------------------------------------------------------
+// 1. СОСТОЯНИЕ ПРИЛОЖЕНИЯ
+// ------------------------------------------------------------
+
+const STATE = {
+  currentScreen: "landing",    // landing | disclaimer | instructions | question | confirm | results
+  currentQuestion: 0,          // индекс текущего вопроса (0-111)
+  answers: {},                 // { questionId: value }
+  results: null,               // результаты подсчёта
+  startTime: null,             // время начала теста
+  theme: "auto"                // auto | light | dark
+};
+
+// ------------------------------------------------------------
+// 2. ИНИЦИАЛИЗАЦИЯ
+// ------------------------------------------------------------
+
+document.addEventListener("DOMContentLoaded", function () {
+  initTheme();
+  checkUrlHash();
+  checkSavedProgress();
+  renderScreen(STATE.currentScreen);
+  setupKeyboardNav();
+});
+
+function initTheme() {
+  const saved = localStorage.getItem("sonv112_theme");
+  if (saved) {
+    STATE.theme = saved;
+    applyTheme(saved);
+  }
+}
+
+function applyTheme(theme) {
+  if (theme === "dark") {
+    document.documentElement.setAttribute("data-theme", "dark");
+  } else if (theme === "light") {
+    document.documentElement.setAttribute("data-theme", "light");
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute("data-theme");
+  let next;
+  if (current === "dark") {
+    next = "light";
+  } else {
+    next = "dark";
+  }
+  STATE.theme = next;
+  localStorage.setItem("sonv112_theme", next);
+  applyTheme(next);
+  updateThemeButton();
+}
+
+function updateThemeButton() {
+  const btn = document.getElementById("themeToggle");
+  if (!btn) return;
+  const isDark = document.documentElement.getAttribute("data-theme") === "dark" ||
+    (STATE.theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  btn.textContent = isDark ? "☀️" : "🌙";
+}
+
+function checkUrlHash() {
+  const hash = window.location.hash;
+  if (hash && hash.startsWith("#r=")) {
+    const encoded = hash.substring(3);
+    if (encoded.length === 112) {
+      STATE.answers = decodeAnswers(encoded);
+      STATE.results = calculateResults(STATE.answers);
+      STATE.currentScreen = "results";
+    }
+  }
+}
+
+function checkSavedProgress() {
+  if (STATE.currentScreen === "results") return;
+  const saved = localStorage.getItem("sonv112_progress");
+  if (saved) {
+    try {
+      const data = JSON.parse(saved);
+      if (data._lastUpdated) {
+        const hoursAgo = (Date.now() - data._lastUpdated) / 3600000;
+        if (hoursAgo < 24 && data.answers && Object.keys(data.answers).length > 0) {
+          const count = Object.keys(data.answers).length;
+          if (confirm(`У вас есть незаконченный тест (${count}/112 вопросов). Продолжить?`)) {
+            STATE.answers = {};
+            for (const [k, v] of Object.entries(data.answers)) {
+              STATE.answers[parseInt(k)] = v;
+            }
+            STATE.currentQuestion = data.currentQuestion || 0;
+            STATE.currentScreen = "question";
+            STATE.startTime = Date.now() - (data.elapsed || 0);
+          } else {
+            localStorage.removeItem("sonv112_progress");
+          }
+        }
+      }
+    } catch (e) {
+      localStorage.removeItem("sonv112_progress");
+    }
+  }
+}
+
+// ------------------------------------------------------------
+// 3. ПЕРЕКЛЮЧЕНИЕ ЭКРАНОВ
+// ------------------------------------------------------------
+
+function renderScreen(screenName) {
+  STATE.currentScreen = screenName;
+  const app = document.getElementById("app");
+  app.innerHTML = "";
+
+  // Шапка (всегда)
+  app.appendChild(createHeader());
+
+  // Контент экрана
+  let screen;
+  switch (screenName) {
+    case "landing":
+      screen = createLanding();
+      break;
+    case "disclaimer":
+      screen = createDisclaimer();
+      break;
+    case "instructions":
+      screen = createInstructions();
+      break;
+    case "question":
+      screen = createQuestionScreen();
+      break;
+    case "confirm":
+      screen = createConfirmScreen();
+      break;
+    case "results":
+      screen = createResultsScreen();
+      break;
+  }
+
+  if (screen) {
+    app.appendChild(screen);
+  }
+
+  // Футер (кроме вопросов)
+  if (screenName !== "question") {
+    app.appendChild(createFooter());
+  }
+
+  // Скролл вверх
+  window.scrollTo(0, 0);
+
+  // Обновить кнопку темы
+  updateThemeButton();
+}
+
+// ------------------------------------------------------------
+// 4. ШАПКА
+// ------------------------------------------------------------
+
+function createHeader() {
+  const header = createElement("header", "header");
+  const logoWrap = createElement("div");
+  const logo = createElement("span", "header__logo", UI_TEXTS.title);
+  const version = createElement("span", "header__version", "v" + UI_TEXTS.version);
+  logoWrap.appendChild(logo);
+  logoWrap.appendChild(version);
+
+  const controls = createElement("div", "header__controls");
+  const themeBtn = createElement("button", "theme-toggle", "🌙");
+  themeBtn.id = "themeToggle";
+  themeBtn.title = "Переключить тему";
+  themeBtn.addEventListener("click", toggleTheme);
+  controls.appendChild(themeBtn);
+
+  header.appendChild(logoWrap);
+  header.appendChild(controls);
+  return header;
+}
+
+// ------------------------------------------------------------
+// 5. ЛЕНДИНГ
+// ------------------------------------------------------------
+
+function createLanding() {
+  const screen = createElement("div", "screen landing active");
+  const icon = createElement("div", "landing__icon", "🧠");
+  const title = createElement("h1", "landing__title", UI_TEXTS.landing.heading);
+  const subtitle = createElement("p", "landing__subtitle", UI_TEXTS.landing.description);
+
+  const features = createElement("ul", "landing__features");
+  for (const f of UI_TEXTS.landing.details) {
+    const li = createElement("li", "landing__feature");
+    const fIcon = createElement("span", "landing__feature-icon", f.icon);
+    const fText = createElement("span", "", f.text);
+    li.appendChild(fIcon);
+    li.appendChild(fText);
+    features.appendChild(li);
+  }
+
+  const btn = createElement("button", "btn btn--primary", UI_TEXTS.landing.startButton);
+  btn.addEventListener("click", function () {
+    renderScreen("disclaimer");
+  });
+
+  screen.appendChild(icon);
+  screen.appendChild(title);
+  screen.appendChild(subtitle);
+  screen.appendChild(features);
+  screen.appendChild(btn);
+  return screen;
+}
+
+// ------------------------------------------------------------
+// 6. ДИСКЛЕЙМЕР
+// ------------------------------------------------------------
+
+function createDisclaimer() {
+  const screen = createElement("div", "screen disclaimer active");
+  const card = createElement("div", "disclaimer__card");
+  const icon = createElement("div", "disclaimer__icon", "⚠️");
+  const title = createElement("h2", "disclaimer__title", UI_TEXTS.disclaimer.heading);
+  const text = createElement("p", "disclaimer__text", UI_TEXTS.disclaimer.text);
+
+  const checkboxes = createElement("div", "disclaimer__checkboxes");
+  const cbStates = [false, false, false];
+
+  UI_TEXTS.disclaimer.checkboxes.forEach(function (labelText, i) {
+    const label = createElement("label", "checkbox-label");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.addEventListener("change", function () {
+      cbStates[i] = input.checked;
+      continueBtn.disabled = !cbStates.every(Boolean);
+    });
+    const span = createElement("span", "", labelText);
+    label.appendChild(input);
+    label.appendChild(span);
+    checkboxes.appendChild(label);
+  });
+
+  const continueBtn = createElement("button", "btn btn--primary btn--full", UI_TEXTS.disclaimer.continueButton);
+  continueBtn.disabled = true;
+  continueBtn.addEventListener("click", function () {
+    renderScreen("instructions");
+  });
+
+  card.appendChild(icon);
+  card.appendChild(title);
+  card.appendChild(text);
+  card.appendChild(checkboxes);
+  card.appendChild(continueBtn);
+  screen.appendChild(card);
+  return screen;
+}
+
+// ------------------------------------------------------------
+// 7. ИНСТРУКЦИЯ
+// ------------------------------------------------------------
+
+function createInstructions() {
+  const screen = createElement("div", "screen instructions active");
+  const card = createElement("div", "instructions__card");
+  const title = createElement("h2", "instructions__title", UI_TEXTS.instructions.heading);
+  const text = createElement("p", "instructions__text", UI_TEXTS.instructions.text);
+
+  const tips = createElement("ul", "instructions__tips");
+  for (const tip of UI_TEXTS.instructions.tips) {
+    const li = createElement("li", "instructions__tip", tip);
+    tips.appendChild(li);
+  }
+
+  // Демо шкалы
+  const demo = createElement("div", "answer-scale-demo");
+  const demoTitle = createElement("div", "answer-scale-demo__title", "Шкала ответов:");
+  demo.appendChild(demoTitle);
+  const demoItems = createElement("div", "answer-scale-demo__items");
+  for (const opt of ANSWER_OPTIONS) {
+    const item = createElement("div", "answer-scale-demo__item");
+    item.innerHTML = "<strong>" + opt.value + "</strong> — " + opt.label;
+    demoItems.appendChild(item);
+  }
+  demo.appendChild(demoItems);
+
+  const btn = createElement("button", "btn btn--primary btn--full", UI_TEXTS.instructions.startButton);
+  btn.addEventListener("click", function () {
+    STATE.startTime = Date.now();
+    STATE.currentQuestion = 0;
+    renderScreen("question");
+  });
+
+  card.appendChild(title);
+  card.appendChild(text);
+  card.appendChild(tips);
+  card.appendChild(demo);
+  card.appendChild(btn);
+  screen.appendChild(card);
+  return screen;
+}
+
+// ------------------------------------------------------------
+// 8. ЭКРАН ВОПРОСОВ
+// ------------------------------------------------------------
+
+function createQuestionScreen() {
+  const screen = createElement("div", "screen question-screen active");
+  if (!STATE.startTime) STATE.startTime = Date.now();
+
+  // Прогресс
+  const progress = createProgressBar();
+  screen.appendChild(progress);
+
+  // Карточка вопроса
+  const card = createQuestionCard();
+  screen.appendChild(card);
+
+  // Навигация
+  const nav = createQuestionNav();
+  screen.appendChild(nav);
+
+  return screen;
+}
+
+function createProgressBar() {
+  const progress = createElement("div", "progress");
+  const info = createElement("div", "progress__info");
+  const counter = createElement("span", "progress__counter",
+    (STATE.currentQuestion + 1) + " " + UI_TEXTS.question.of + " " + QUESTIONS.length);
+
+  const answered = Object.keys(STATE.answers).length;
+  const remaining = QUESTIONS.length - answered;
+  const minutesLeft = Math.max(1, Math.ceil(remaining * 0.15));
+  const time = createElement("span", "progress__time",
+    "~" + minutesLeft + " " + UI_TEXTS.question.minutesLeft);
+
+  info.appendChild(counter);
+  info.appendChild(time);
+  progress.appendChild(info);
+
+  const bar = createElement("div", "progress__bar");
+  const fill = createElement("div", "progress__fill");
+  fill.style.width = Math.round(((STATE.currentQuestion + 1) / QUESTIONS.length) * 100) + "%";
+  bar.appendChild(fill);
+  progress.appendChild(bar);
+  return progress;
+}
+
+function createQuestionCard() {
+  const question = QUESTIONS[STATE.currentQuestion];
+  const card = createElement("div", "question-card");
+  const text = createElement("div", "question-card__text", question.text);
+  card.appendChild(text);
+
+  const options = createElement("div", "answer-options");
+  for (const opt of ANSWER_OPTIONS) {
+    const option = createElement("div", "answer-option");
+    option.tabIndex = 0;
+    option.setAttribute("role", "button");
+    option.setAttribute("aria-label", opt.value + " — " + opt.label);
+
+    if (STATE.answers[question.id] === opt.value) {
+      option.classList.add("selected");
+    }
+
+    const num = createElement("span", "answer-option__number", String(opt.value));
+    const label = createElement("span", "answer-option__label", opt.label);
+    option.appendChild(num);
+    option.appendChild(label);
+
+    option.addEventListener("click", function () {
+      selectAnswer(question.id, opt.value);
+    });
+
+    option.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        selectAnswer(question.id, opt.value);
+      }
+    });
+
+    options.appendChild(option);
+  }
+
+  card.appendChild(options);
+  return card;
+}
+
+function createQuestionNav() {
+  const nav = createElement("div", "question-nav");
+
+  if (STATE.currentQuestion > 0) {
+    const backBtn = createElement("button", "btn btn--ghost", UI_TEXTS.question.back);
+    backBtn.addEventListener("click", function () {
+      STATE.currentQuestion--;
+      renderScreen("question");
+    });
+    nav.appendChild(backBtn);
+  } else {
+    nav.appendChild(createElement("div", "question-nav__spacer"));
+  }
+
+  // Кнопка "Далее" видна только если ответ уже выбран
+  const question = QUESTIONS[STATE.currentQuestion];
+  if (STATE.answers[question.id] !== undefined) {
+    const nextLabel = STATE.currentQuestion < QUESTIONS.length - 1
+      ? UI_TEXTS.question.next
+      : "Завершить →";
+    const nextBtn = createElement("button", "btn btn--primary", nextLabel);
+    nextBtn.addEventListener("click", function () {
+      goToNext();
+    });
+    nav.appendChild(nextBtn);
+  } else {
+    nav.appendChild(createElement("div", "question-nav__spacer"));
+  }
+
+  return nav;
+}
+
+function selectAnswer(questionId, value) {
+  STATE.answers[questionId] = value;
+  saveProgress();
+
+  // Небольшая задержка перед переходом — чтобы было видно выбор
+  setTimeout(function () {
+    goToNext();
+  }, 250);
+}
+
+function goToNext() {
+  if (STATE.currentQuestion < QUESTIONS.length - 1) {
+    STATE.currentQuestion++;
+    renderScreen("question");
+  } else {
+    // Проверить, все ли вопросы отвечены
+    const unanswered = QUESTIONS.filter(function (q) {
+      return STATE.answers[q.id] === undefined;
+    });
+
+    if (unanswered.length > 0) {
+      if (confirm("Вы пропустили " + unanswered.length + " вопрос(ов). Хотите вернуться к первому пропущенному?")) {
+        const firstUnanswered = QUESTIONS.findIndex(function (q) {
+          return STATE.answers[q.id] === undefined;
+        });
+        STATE.currentQuestion = firstUnanswered;
+        renderScreen("question");
+      } else {
+        renderScreen("confirm");
+      }
+    } else {
+      renderScreen("confirm");
+    }
+  }
+}
+
+function saveProgress() {
+  const data = {
+    answers: STATE.answers,
+    currentQuestion: STATE.currentQuestion,
+    elapsed: Date.now() - (STATE.startTime || Date.now()),
+    _lastUpdated: Date.now()
+  };
+  localStorage.setItem("sonv112_progress", JSON.stringify(data));
+}
+
+// ------------------------------------------------------------
+// 9. ПОДТВЕРЖДЕНИЕ
+// ------------------------------------------------------------
+
+function createConfirmScreen() {
+  const screen = createElement("div", "screen confirm active");
+  const icon = createElement("div", "confirm__icon", "✅");
+  const title = createElement("h2", "confirm__title", UI_TEXTS.confirm.heading);
+
+  const answered = Object.keys(STATE.answers).length;
+  const total = QUESTIONS.length;
+  const confirmText = answered < total
+    ? "Отвечено на " + answered + " из " + total + " вопросов. Пропущенные будут засчитаны как 0."
+    : UI_TEXTS.confirm.text;
+  const text = createElement("p", "confirm__text", confirmText);
+
+  const buttons = createElement("div", "confirm__buttons");
+
+  const showBtn = createElement("button", "btn btn--primary btn--full", UI_TEXTS.confirm.showResults);
+  showBtn.addEventListener("click", function () {
+    STATE.results = calculateResults(STATE.answers);
+    localStorage.removeItem("sonv112_progress");
+    // Сохранить в URL
+    const hash = encodeAnswers(STATE.answers);
+    window.location.hash = "r=" + hash;
+    renderScreen("results");
+  });
+
+  const backBtn = createElement("button", "btn btn--secondary btn--full", UI_TEXTS.confirm.backButton);
+  backBtn.addEventListener("click", function () {
+    renderScreen("question");
+  });
+
+  buttons.appendChild(showBtn);
+  buttons.appendChild(backBtn);
+
+  screen.appendChild(icon);
+  screen.appendChild(title);
+  screen.appendChild(text);
+  screen.appendChild(buttons);
+  return screen;
+}
+
+// ------------------------------------------------------------
+// 10. ЭКРАН РЕЗУЛЬТАТОВ
+// ------------------------------------------------------------
+
+function createResultsScreen() {
+  if (!STATE.results) return createElement("div");
+
+  const screen = createElement("div", "screen results active");
+  const results = STATE.results;
+  const scales = results.scales;
+
+  // Заголовок
+  const title = createElement("h1", "results__title", UI_TEXTS.results.heading);
+  screen.appendChild(title);
+
+  const date = createElement("div", "results__date",
+    "Дата: " + new Date().toLocaleDateString("ru-RU"));
+  screen.appendChild(date);
+
+  // 1. Контрольные параметры
+  screen.appendChild(createControlSection(scales, results.validity));
+
+  // 2. Если невалидно — предупреждение и стоп
+  if (!results.validity.isValid) {
+    const stopMsg = createElement("div", "results-section");
+    const stopBody = createElement("div", "results-section__body");
+    const stopText = createElement("p", "interp-block__text",
+      "Из-за низкой достоверности ответов детальная интерпретация основных шкал не проводится. " +
+      "Рекомендуется пройти тест повторно, отвечая максимально честно, или обратиться к специалисту для клинического интервью.");
+    stopBody.appendChild(stopText);
+    stopMsg.appendChild(stopBody);
+    screen.appendChild(stopMsg);
+    screen.appendChild(createResultsActions());
+    return screen;
+  }
+
+  // 3. Радарная диаграмма
+  screen.appendChild(createRadarSection(scales));
+
+  // 4. Детализация по шкалам
+  screen.appendChild(createScalesSection(scales));
+
+  // 5. Интерпретация
+  screen.appendChild(createInterpretationSection(results.interpretation, scales));
+
+  // 6. Флаги
+  if (results.flags.length > 0) {
+    screen.appendChild(createFlagsSection(results.flags));
+  }
+
+  // 7. Рекомендации
+  screen.appendChild(createRecommendationsSection(results.recommendations));
+
+  // 8. Кнопки действий
+  screen.appendChild(createResultsActions());
+
+  return screen;
+}
+
+// --- Контрольные параметры ---
+
+function createControlSection(scales, validity) {
+  const section = createElement("div", "results-section");
+  const header = createElement("div", "results-section__header", "⚙️ " + UI_TEXTS.results.controlHeading);
+  const body = createElement("div", "results-section__body");
+
+  const controlScales = ["L", "M", "K", "N"];
+  for (const key of controlScales) {
+    const s = scales[key];
+    const param = createElement("div", "control-param");
+    const name = createElement("span", "control-param__name", s.name);
+    const value = createElement("span", "control-param__value");
+    const icon = createElement("span", "", s.zone.icon);
+    const label = createElement("span", "", s.zone.label);
+    const score = createElement("span", "control-param__score", s.sum + "/" + s.max);
+    value.appendChild(icon);
+    value.appendChild(label);
+    value.appendChild(score);
+    param.appendChild(name);
+    param.appendChild(value);
+    body.appendChild(param);
+  }
+
+  // Предупреждения валидности
+  if (validity.warnings.length > 0) {
+    const warningsDiv = createElement("div");
+    warningsDiv.style.marginTop = "16px";
+    for (const w of validity.warnings) {
+      const warning = createElement("div", "validity-warning validity-warning--" + w.type);
+      const wIcon = createElement("span", "validity-warning__icon", w.icon);
+      const wContent = createElement("div", "validity-warning__content");
+      const wTitle = createElement("div", "validity-warning__title", w.title);
+      const wText = createElement("div", "validity-warning__text", w.text);
+      wContent.appendChild(wTitle);
+      wContent.appendChild(wText);
+      warning.appendChild(wIcon);
+      warning.appendChild(wContent);
+      warningsDiv.appendChild(warning);
+    }
+    body.appendChild(warningsDiv);
+  }
+
+  section.appendChild(header);
+  section.appendChild(body);
+  return section;
+}
+
+// --- Радарная диаграмма ---
+
+function createRadarSection(scales) {
+  const section = createElement("div", "results-section");
+  const header = createElement("div", "results-section__header", "📊 " + UI_TEXTS.results.profileHeading);
+  const body = createElement("div", "results-section__body");
+  const container = createElement("div", "radar-container");
+
+  const canvas = document.createElement("canvas");
+  canvas.id = "radarChart";
+  canvas.width = 500;
+  canvas.height = 500;
+  container.appendChild(canvas);
+  body.appendChild(container);
+  section.appendChild(header);
+  section.appendChild(body);
+
+  // Отрисовка после добавления в DOM
+  setTimeout(function () {
+    drawRadarChart(canvas, scales);
+  }, 100);
+
+  return section;
+}
+
+// --- Детализация по шкалам ---
+
+function createScalesSection(scales) {
+  const section = createElement("div", "results-section");
+  const header = createElement("div", "results-section__header", "📋 " + UI_TEXTS.results.scalesHeading);
+  const body = createElement("div", "results-section__body");
+
+  const mainKeys = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
+  for (const key of mainKeys) {
+    const s = scales[key];
+    body.appendChild(createScaleItem(s));
+  }
+
+  section.appendChild(header);
+  section.appendChild(body);
+  return section;
+}
+
+function createScaleItem(s) {
+  const item = createElement("div", "scale-item");
+
+  // Заголовок
+  const hdr = createElement("div", "scale-item__header");
+  const name = createElement("span", "scale-item__name", s.name);
+  const values = createElement("div", "scale-item__values");
+  const pct = createElement("span", "scale-item__percentage", s.percentage + "%");
+  pct.style.color = s.zone.color;
+  const score = createElement("span", "scale-item__score", s.sum + "/" + s.max);
+  const zone = createElement("span", "scale-item__zone scale-item__zone--" + s.zone.key, s.zone.icon + " " + s.zone.label);
+
+  values.appendChild(pct);
+  values.appendChild(score);
+  values.appendChild(zone);
+  hdr.appendChild(name);
+  hdr.appendChild(values);
+  item.appendChild(hdr);
+
+  // Бар
+  const bar = createElement("div", "scale-bar");
+  const fill = createElement("div", "scale-bar__fill scale-bar__fill--" + s.zone.key);
+  fill.style.width = s.percentage + "%";
+  bar.appendChild(fill);
+  item.appendChild(bar);
+
+  // Суб-шкалы
+  for (const [subKey, sub] of Object.entries(s.subscales)) {
+    const subDiv = createElement("div", "subscale");
+    const subHdr = createElement("div", "subscale__header");
+    const subName = createElement("span", "subscale__name", "└─ " + sub.name);
+    const subValues = createElement("span", "subscale__values");
+    const subPct = createElement("span", "subscale__percentage", sub.percentage + "%");
+    subPct.style.color = sub.zone.color;
+    const subScore = createElement("span", "", sub.sum + "/" + sub.max);
+    const subZone = createElement("span", "", sub.zone.icon);
+    subValues.appendChild(subPct);
+    subValues.appendChild(subScore);
+    subValues.appendChild(subZone);
+    subHdr.appendChild(subName);
+    subHdr.appendChild(subValues);
+    subDiv.appendChild(subHdr);
+
+    const subBar = createElement("div", "scale-bar");
+    const subFill = createElement("div", "scale-bar__fill scale-bar__fill--" + sub.zone.key);
+    subFill.style.width = sub.percentage + "%";
+    subBar.appendChild(subFill);
+    subDiv.appendChild(subBar);
+    item.appendChild(subDiv);
+  }
+
+  // Кнопка "Подробнее"
+  const detailsId = "details-" + s.key;
+  const toggleBtn = createElement("button", "scale-details-toggle", UI_TEXTS.results.moreDetails);
+  toggleBtn.addEventListener("click", function () {
+    const details = document.getElementById(detailsId);
+    if (details.classList.contains("open")) {
+      details.classList.remove("open");
+      toggleBtn.textContent = UI_TEXTS.results.moreDetails;
+    } else {
+      details.classList.add("open");
+      toggleBtn.textContent = UI_TEXTS.results.lessDetails;
+    }
+  });
+  item.appendChild(toggleBtn);
+
+  // Детали
+  const details = createElement("div", "scale-details");
+  details.id = detailsId;
+  const descP = createElement("p", "scale-details__description", s.description);
+  const basisP = createElement("p", "scale-details__basis", "Основа: " + s.basis);
+  details.appendChild(descP);
+  details.appendChild(basisP);
+
+  // Список вопросов с баллами
+  if (s.questionDetails && s.questionDetails.length > 0) {
+    const qTitle = createElement("p", "scale-details__description");
+    qTitle.style.marginTop = "12px";
+    qTitle.style.fontWeight = "600";
+    qTitle.textContent = "Ваши ответы (от наибольшего к наименьшему):";
+    details.appendChild(qTitle);
+
+    for (const qd of s.questionDetails) {
+      const qLine = createElement("div", "scale-details__description");
+      qLine.style.fontSize = "0.8rem";
+      qLine.style.padding = "4px 0";
+      const shortText = qd.text.length > 80 ? qd.text.substring(0, 80) + "…" : qd.text;
+      qLine.innerHTML = "<strong>[" + qd.answer + "]</strong> " + shortText;
+      details.appendChild(qLine);
+    }
+  }
+
+  item.appendChild(details);
+  return item;
+}
+
+// --- Интерпретация ---
+
+function createInterpretationSection(interp, scales) {
+  const section = createElement("div", "results-section");
+  const header = createElement("div", "results-section__header", "🔍 " + UI_TEXTS.results.interpretationHeading);
+  const body = createElement("div", "results-section__body");
+
+  // Сводка
+  const summaryBlock = createElement("div", "interp-block");
+  summaryBlock.style.borderLeftColor = "var(--accent)";
+  const summaryTitle = createElement("div", "interp-block__title", "Сводка");
+  const summaryText = createElement("div", "summary-text", interp.summary);
+  summaryBlock.appendChild(summaryTitle);
+  summaryBlock.appendChild(summaryText);
+  body.appendChild(summaryBlock);
+
+  // СДВГ
+  if (interp.adhd.title) {
+    body.appendChild(createInterpBlock(interp.adhd, interp.adhd.present ? "var(--zone-orange)" : "var(--border)"));
+  }
+
+  // РАС
+  if (interp.asd.title) {
+    body.appendChild(createInterpBlock(interp.asd, interp.asd.present ? "var(--zone-red)" : "var(--border)"));
+  }
+
+  // Расстройства обучения
+  for (const item of interp.learning) {
+    body.appendChild(createInterpBlock(item, item.confidence !== "low" ? "var(--zone-yellow)" : "var(--border)"));
+  }
+
+  // Коморбидность
+  for (const combo of interp.comorbidity) {
+    const block = createElement("div", "comorbidity-block");
+    const cTitle = createElement("div", "comorbidity-block__title", combo.title);
+    const cText = createElement("div", "comorbidity-block__text", combo.text);
+    block.appendChild(cTitle);
+    block.appendChild(cText);
+
+    if (combo.interactions) {
+      for (const inter of combo.interactions) {
+        const iDiv = createElement("div", "comorbidity-interaction");
+        const iTitle = createElement("div", "comorbidity-interaction__title", "⚡ " + inter.title);
+        const iText = createElement("div", "comorbidity-interaction__text", inter.text);
+        iDiv.appendChild(iTitle);
+        iDiv.appendChild(iText);
+        block.appendChild(iDiv);
+      }
+    }
+
+    body.appendChild(block);
+  }
+
+  section.appendChild(header);
+  section.appendChild(body);
+  return section;
+}
+
+function createInterpBlock(data, borderColor) {
+  const block = createElement("div", "interp-block");
+  block.style.borderLeftColor = borderColor;
+
+  const titleWrap = createElement("div", "interp-block__title");
+  titleWrap.textContent = data.title;
+  if (data.confidence) {
+    const badge = createElement("span", "interp-block__confidence confidence--" + data.confidence,
+      getConfidenceLabel(data.confidence));
+    titleWrap.appendChild(badge);
+  }
+  block.appendChild(titleWrap);
+
+  const text = createElement("div", "interp-block__text", data.text);
+  block.appendChild(text);
+
+  if (data.details) {
+    for (const detail of data.details) {
+      const dDiv = createElement("div", "interp-detail");
+      const dTitle = createElement("div", "interp-detail__title", detail.title);
+      const dText = createElement("div", "interp-detail__text", detail.text);
+      dDiv.appendChild(dTitle);
+      dDiv.appendChild(dText);
+      block.appendChild(dDiv);
+    }
+  }
+
+  return block;
+}
+
+// --- Флаги ---
+
+function createFlagsSection(flags) {
+  const section = createElement("div", "results-section");
+  const header = createElement("div", "results-section__header", "⚠️ " + UI_TEXTS.results.flagsHeading);
+  const body = createElement("div", "results-section__body");
+
+  for (const flag of flags) {
+    const card = createElement("div", "flag-card");
+    const icon = createElement("span", "flag-card__icon", flag.icon);
+    const content = createElement("div", "flag-card__content");
+    const title = createElement("div", "flag-card__title", flag.title);
+    const text = createElement("div", "flag-card__text", flag.text);
+    content.appendChild(title);
+    content.appendChild(text);
+    card.appendChild(icon);
+    card.appendChild(content);
+    body.appendChild(card);
+  }
+
+  section.appendChild(header);
+  section.appendChild(body);
+  return section;
+}
+
+// --- Рекомендации ---
+
+function createRecommendationsSection(recs) {
+  const section = createElement("div", "results-section");
+  const header = createElement("div", "results-section__header", "📌 " + UI_TEXTS.results.recommendationsHeading);
+  const body = createElement("div", "results-section__body");
+
+  // Что делать
+  const doList = createElement("ul", "rec-list rec-list--do");
+  for (const item of recs.doList) {
+    const li = createElement("li", "rec-list__item");
+    const icon = createElement("span", "rec-list__icon", "✅");
+    const text = createElement("span", "", item);
+    li.appendChild(icon);
+    li.appendChild(text);
+    doList.appendChild(li);
+  }
+  body.appendChild(doList);
+
+  // Чего не делать
+  const dontWrap = createElement("div", "rec-list--dont");
+  const dontList = createElement("ul", "rec-list");
+  for (const item of recs.dontList) {
+    const li = createElement("li", "rec-list__item");
+    const icon = createElement("span", "rec-list__icon", "❌");
+    const text = createElement("span", "", item);
+    li.appendChild(icon);
+    li.appendChild(text);
+    dontList.appendChild(li);
+  }
+  dontWrap.appendChild(dontList);
+  body.appendChild(dontWrap);
+
+  // Заметки для специалиста
+  if (recs.specialistNotes.length > 0) {
+    const specDiv = createElement("div", "rec-specialist");
+    const specTitle = createElement("div", "rec-specialist__title", "Заметки для специалиста");
+    specDiv.appendChild(specTitle);
+    for (const note of recs.specialistNotes) {
+      const noteP = createElement("div", "rec-specialist__item", note);
+      specDiv.appendChild(noteP);
+    }
+    body.appendChild(specDiv);
+  }
+
+  section.appendChild(header);
+  section.appendChild(body);
+  return section;
+}
+
+// --- Кнопки действий ---
+
+function createResultsActions() {
+  const actions = createElement("div", "results-actions");
+
+  // PDF
+  const pdfBtn = createElement("button", "btn btn--primary", UI_TEXTS.results.downloadPdf);
+  pdfBtn.addEventListener("click", downloadPdf);
+  actions.appendChild(pdfBtn);
+
+  // Копировать ссылку
+  const linkBtn = createElement("button", "btn btn--secondary", UI_TEXTS.results.copyLink);
+  linkBtn.addEventListener("click", copyLink);
+  actions.appendChild(linkBtn);
+
+  // Пройти заново
+  const restartBtn = createElement("button", "btn btn--ghost", UI_TEXTS.results.restart);
+  restartBtn.addEventListener("click", function () {
+    if (confirm("Начать тест заново? Текущие результаты останутся доступны по ссылке.")) {
+      STATE.answers = {};
+      STATE.results = null;
+      STATE.currentQuestion = 0;
+      STATE.startTime = null;
+      localStorage.removeItem("sonv112_progress");
+      window.location.hash = "";
+      renderScreen("landing");
+    }
+  });
+  actions.appendChild(restartBtn);
+
+  return actions;
+}
+
+// ------------------------------------------------------------
+// 11. РАДАРНАЯ ДИАГРАММА (рисуем вручную на Canvas)
+// ------------------------------------------------------------
+
+function drawRadarChart(canvas, scales) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  // Данные для отображения
+  const radarScales = [
+    { key: "A", label: "Невнимательн." },
+    { key: "B", label: "Гиперактивн." },
+    { key: "C", label: "Эмоц. дисрег." },
+    { key: "D", label: "Соц. коммуник." },
+    { key: "E", label: "Паттерны" },
+    { key: "F", label: "Сенсорика" },
+    { key: "G", label: "Камуфляж" },
+    { key: "H", label: "Дислексия" },
+    { key: "I", label: "Дискалькулия" },
+    { key: "J", label: "Диспраксия" }
+  ];
+
+  const n = radarScales.length;
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  const radius = Math.min(centerX, centerY) - 60;
+
+  // Определяем цвета в зависимости от темы
+  const isDark = document.documentElement.getAttribute("data-theme") === "dark" ||
+    (STATE.theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+  const gridColor = isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)";
+  const labelColor = isDark ? "#A0A0B0" : "#6B6B6B";
+  const dataFill = "rgba(74, 111, 165, 0.2)";
+  const dataStroke = "rgba(74, 111, 165, 0.8)";
+  const thresholdColor = "rgba(217, 140, 74, 0.4)";
+
+  // Очистка
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Рисуем концентрические круги (20%, 40%, 60%, 80%, 100%)
+  for (let level = 1; level <= 5; level++) {
+    const r = (radius * level) / 5;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, r, 0, 2 * Math.PI);
+    ctx.strokeStyle = gridColor;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Подписи процентов
+    if (level < 5) {
+      ctx.fillStyle = isDark ? "#505060" : "#CCCCCC";
+      ctx.font = "11px sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText((level * 20) + "%", centerX + 4, centerY - r + 12);
+    }
+  }
+
+  // Рисуем оси
+  for (let i = 0; i < n; i++) {
+    const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+    const x = centerX + radius * Math.cos(angle);
+    const y = centerY + radius * Math.sin(angle);
+
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = gridColor;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Подписи
+    const labelRadius = radius + 30;
+    const lx = centerX + labelRadius * Math.cos(angle);
+    const ly = centerY + labelRadius * Math.sin(angle);
+
+    ctx.fillStyle = labelColor;
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    // Коррекция положения для крайних точек
+    if (Math.abs(Math.cos(angle)) > 0.9) {
+      ctx.textAlign = Math.cos(angle) > 0 ? "left" : "right";
+    }
+
+    ctx.fillText(radarScales[i].label, lx, ly);
+  }
+
+  // Рисуем пороговую линию (60% — «значительная»)
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+    const r = radius * 0.6;
+    const x = centerX + r * Math.cos(angle);
+    const y = centerY + r * Math.sin(angle);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.strokeStyle = thresholdColor;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 5]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Рисуем данные
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const scale = scales[radarScales[i].key];
+    const value = scale.percentage / 100;
+    const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+    const r = radius * value;
+    const x = centerX + r * Math.cos(angle);
+    const y = centerY + r * Math.sin(angle);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = dataFill;
+  ctx.fill();
+  ctx.strokeStyle = dataStroke;
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // Рисуем точки
+  for (let i = 0; i < n; i++) {
+    const scale = scales[radarScales[i].key];
+    const value = scale.percentage / 100;
+    const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+    const r = radius * value;
+    const x = centerX + r * Math.cos(angle);
+    const y = centerY + r * Math.sin(angle);
+
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, 2 * Math.PI);
+    ctx.fillStyle = scale.zone.color;
+    ctx.fill();
+    ctx.strokeStyle = isDark ? "#2A2A42" : "#FFFFFF";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+
+// ------------------------------------------------------------
+// 12. PDF ГЕНЕРАЦИЯ
+// ------------------------------------------------------------
+
+function downloadPdf() {
+  // Используем html2pdf.js (подключён через CDN в index.html)
+  if (typeof html2pdf === "undefined") {
+    // Fallback: скачать текстовый отчёт
+    downloadTextReport();
+    return;
+  }
+
+  const element = document.querySelector(".results");
+  if (!element) return;
+
+  // Временно убираем кнопки
+  const actions = element.querySelector(".results-actions");
+  if (actions) actions.style.display = "none";
+
+  // Раскрываем все детали
+  const allDetails = element.querySelectorAll(".scale-details");
+  allDetails.forEach(function (d) { d.classList.add("open"); });
+  const allToggles = element.querySelectorAll(".scale-details-toggle");
+  allToggles.forEach(function (t) { t.style.display = "none"; });
+
+  const opt = {
+    margin: [10, 10, 10, 10],
+    filename: "SONV-112_" + new Date().toISOString().split("T")[0] + ".pdf",
+    image: { type: "jpeg", quality: 0.95 },
+    html2canvas: { scale: 2, useCORS: true },
+    jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+    pagebreak: { mode: ["avoid-all", "css", "legacy"] }
+  };
+
+  html2pdf().set(opt).from(element).save().then(function () {
+    if (actions) actions.style.display = "";
+    allDetails.forEach(function (d) { d.classList.remove("open"); });
+    allToggles.forEach(function (t) { t.style.display = ""; });
+    showToast("PDF сохранён");
+  }).catch(function () {
+    if (actions) actions.style.display = "";
+    allDetails.forEach(function (d) { d.classList.remove("open"); });
+    allToggles.forEach(function (t) { t.style.display = ""; });
+    downloadTextReport();
+  });
+}
+
+function downloadTextReport() {
+  if (!STATE.results) return;
+  const text = generateProfileText(STATE.results);
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "SONV-112_" + new Date().toISOString().split("T")[0] + ".txt";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast("Текстовый отчёт сохранён");
+}
+
+// ------------------------------------------------------------
+// 13. КОПИРОВАНИЕ ССЫЛКИ
+// ------------------------------------------------------------
+
+function copyLink() {
+  const url = window.location.href;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(function () {
+      showToast("Ссылка скопирована в буфер обмена");
+    }).catch(function () {
+      fallbackCopy(url);
+    });
+  } else {
+    fallbackCopy(url);
+  }
+}
+
+function fallbackCopy(text) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand("copy");
+    showToast("Ссылка скопирована");
+  } catch (e) {
+    showToast("Не удалось скопировать. Скопируйте ссылку из адресной строки.");
+  }
+  document.body.removeChild(textarea);
+}
+
+// ------------------------------------------------------------
+// 14. TOAST-УВЕДОМЛЕНИЯ
+// ------------------------------------------------------------
+
+function showToast(message) {
+  // Удалить старый toast если есть
+  const old = document.querySelector(".toast");
+  if (old) old.remove();
+
+  const toast = createElement("div", "toast", message);
+  document.body.appendChild(toast);
+
+  // Показать
+  requestAnimationFrame(function () {
+    toast.classList.add("visible");
+  });
+
+  // Скрыть через 3 секунды
+  setTimeout(function () {
+    toast.classList.remove("visible");
+    setTimeout(function () {
+      if (toast.parentNode) toast.remove();
+    }, 400);
+  }, 3000);
+}
+
+// ------------------------------------------------------------
+// 15. КЛАВИАТУРНАЯ НАВИГАЦИЯ
+// ------------------------------------------------------------
+
+function setupKeyboardNav() {
+  document.addEventListener("keydown", function (e) {
+    if (STATE.currentScreen !== "question") return;
+
+    // Цифры 0-4 для выбора ответа
+    const num = parseInt(e.key);
+    if (num >= 0 && num <= 4) {
+      const question = QUESTIONS[STATE.currentQuestion];
+      selectAnswer(question.id, num);
+      return;
+    }
+
+    // Стрелки для навигации
+    if (e.key === "ArrowLeft" && STATE.currentQuestion > 0) {
+      STATE.currentQuestion--;
+      renderScreen("question");
+    }
+
+    if (e.key === "ArrowRight") {
+      const question = QUESTIONS[STATE.currentQuestion];
+      if (STATE.answers[question.id] !== undefined) {
+        goToNext();
+      }
+    }
+  });
+}
+
+// ------------------------------------------------------------
+// 16. ФУТЕР
+// ------------------------------------------------------------
+
+function createFooter() {
+  const footer = createElement("footer", "footer");
+  const text = createElement("div", "footer__text");
+  text.innerHTML = UI_TEXTS.footer.disclaimer + "<br>" +
+    UI_TEXTS.footer.basis + "<br>" +
+    UI_TEXTS.footer.version;
+  footer.appendChild(text);
+  return footer;
+}
+
+// ------------------------------------------------------------
+// 17. УТИЛИТЫ
+// ------------------------------------------------------------
+
+function createElement(tag, className, textContent) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  if (textContent) el.textContent = textContent;
+  return el;
+}

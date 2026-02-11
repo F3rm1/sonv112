@@ -188,22 +188,23 @@ function createHeader() {
 // ------------------------------------------------------------
 
 function createLanding() {
-  const screen = createElement("div", "screen landing active");
-  const icon = createElement("div", "landing__icon", "🧠");
-  const title = createElement("h1", "landing__title", UI_TEXTS.landing.heading);
-  const subtitle = createElement("p", "landing__subtitle", UI_TEXTS.landing.description);
+  var screen = createElement("div", "screen landing active");
+  var icon = createElement("div", "landing__icon", "🧠");
+  var title = createElement("h1", "landing__title", UI_TEXTS.landing.heading);
+  var subtitle = createElement("p", "landing__subtitle", UI_TEXTS.landing.description);
 
-  const features = createElement("ul", "landing__features");
-  for (const f of UI_TEXTS.landing.details) {
-    const li = createElement("li", "landing__feature");
-    const fIcon = createElement("span", "landing__feature-icon", f.icon);
-    const fText = createElement("span", "", f.text);
+  var features = createElement("ul", "landing__features");
+  for (var i = 0; i < UI_TEXTS.landing.details.length; i++) {
+    var f = UI_TEXTS.landing.details[i];
+    var li = createElement("li", "landing__feature");
+    var fIcon = createElement("span", "landing__feature-icon", f.icon);
+    var fText = createElement("span", "", f.text);
     li.appendChild(fIcon);
     li.appendChild(fText);
     features.appendChild(li);
   }
 
-  const btn = createElement("button", "btn btn--primary", UI_TEXTS.landing.startButton);
+  var btn = createElement("button", "btn btn--primary", UI_TEXTS.landing.startButton);
   btn.addEventListener("click", function () {
     renderScreen("disclaimer");
   });
@@ -213,6 +214,10 @@ function createLanding() {
   screen.appendChild(subtitle);
   screen.appendChild(features);
   screen.appendChild(btn);
+
+  // Блок «На чём основан тест»
+  screen.appendChild(createMethodologyBlock("landing"));
+
   return screen;
 }
 
@@ -567,8 +572,10 @@ function createResultsScreen() {
   // 8. Кнопки действий
   screen.appendChild(createResultsActions());
 
+  // 9. Методология и источники
+  screen.appendChild(createMethodologyBlock("results"));
+
   return screen;
-}
 
 // --- Контрольные параметры ---
 
@@ -921,30 +928,55 @@ function createRecommendationsSection(recs) {
 // --- Кнопки действий ---
 
 function createResultsActions() {
-  var actions = createElement("div", "results-actions");
+  var wrapper = createElement("div", "results-actions");
 
-  // Главная кнопка: PDF через печать браузера
+  // --- Главные кнопки (PDF + Ссылка) ---
+  var mainRow = createElement("div", "results-actions__main");
+
   var pdfBtn = createElement("button", "btn btn--primary", "📄 Сохранить как PDF");
   pdfBtn.addEventListener("click", openPrintableReport);
-  actions.appendChild(pdfBtn);
+  mainRow.appendChild(pdfBtn);
 
-  // Скачать HTML-файл
-  var htmlBtn = createElement("button", "btn btn--secondary", "📋 Скачать отчёт");
+  var linkBtn = createElement("button", "btn btn--primary", "🔗 Скопировать ссылку");
+  linkBtn.addEventListener("click", function () {
+    copyLink();
+    linkBtn.textContent = "✅ Скопировано!";
+    setTimeout(function () {
+      linkBtn.textContent = "🔗 Скопировать ссылку";
+    }, 2000);
+  });
+  mainRow.appendChild(linkBtn);
+
+  wrapper.appendChild(mainRow);
+
+  // --- Дополнительные варианты экспорта (раскрывающиеся) ---
+  var extraToggle = createElement("button", "results-actions__extra-toggle", "▼ Другие варианты экспорта");
+  var extraPanel = createElement("div", "results-actions__extra");
+
+  extraToggle.addEventListener("click", function () {
+    if (extraPanel.classList.contains("open")) {
+      extraPanel.classList.remove("open");
+      extraToggle.textContent = "▼ Другие варианты экспорта";
+    } else {
+      extraPanel.classList.add("open");
+      extraToggle.textContent = "▲ Скрыть";
+    }
+  });
+
+  var htmlBtn = createElement("button", "btn btn--secondary btn--full", "📋 Скачать отчёт (HTML-файл)");
   htmlBtn.addEventListener("click", downloadHtmlReport);
-  actions.appendChild(htmlBtn);
+  extraPanel.appendChild(htmlBtn);
 
-  // Копировать ссылку
-  var linkBtn = createElement("button", "btn btn--secondary", UI_TEXTS.results.copyLink);
-  linkBtn.addEventListener("click", copyLink);
-  actions.appendChild(linkBtn);
-
-  // Текстовый отчёт
-  var txtBtn = createElement("button", "btn btn--ghost btn--small", "📝 Текстовый отчёт");
+  var txtBtn = createElement("button", "btn btn--secondary btn--full", "📝 Скачать текстовый отчёт");
   txtBtn.addEventListener("click", downloadTextReport);
-  actions.appendChild(txtBtn);
+  extraPanel.appendChild(txtBtn);
 
-  // Пройти заново
-  var restartBtn = createElement("button", "btn btn--ghost btn--small", UI_TEXTS.results.restart);
+  wrapper.appendChild(extraToggle);
+  wrapper.appendChild(extraPanel);
+
+  // --- Пройти заново ---
+  var restartWrap = createElement("div", "results-actions__restart");
+  var restartBtn = createElement("button", "btn btn--ghost", "🔄 Пройти заново");
   restartBtn.addEventListener("click", function () {
     if (confirm("Начать тест заново? Текущие результаты останутся доступны по ссылке.")) {
       STATE.answers = {};
@@ -956,11 +988,115 @@ function createResultsActions() {
       renderScreen("landing");
     }
   });
-  actions.appendChild(restartBtn);
+  restartWrap.appendChild(restartBtn);
+  wrapper.appendChild(restartWrap);
 
-  return actions;
+  return wrapper;
 }
+// ------------------------------------------------------------
+// БЛОК МЕТОДОЛОГИИ И ИСТОЧНИКОВ
+// ------------------------------------------------------------
 
+function createMethodologyBlock(context) {
+  var section = createElement("div", "methodology-section");
+
+  // Кнопка-переключатель
+  var toggleText = context === "landing"
+    ? "📚 На чём основан этот тест"
+    : "📚 Методология и источники";
+
+  var toggle = createElement("button", "methodology-toggle", toggleText);
+  var content = createElement("div", "methodology-content");
+
+  toggle.addEventListener("click", function () {
+    if (content.classList.contains("open")) {
+      content.classList.remove("open");
+      toggle.textContent = toggleText;
+    } else {
+      content.classList.add("open");
+      toggle.textContent = "▲ Свернуть";
+    }
+  });
+
+  // --- Наполнение ---
+
+  // Описание
+  var descTitle = createElement("h3", "", "Основа");
+  var descP = createElement("p", "", METHODOLOGY.shortDescription);
+  content.appendChild(descTitle);
+  content.appendChild(descP);
+
+  // Принципы
+  var prinTitle = createElement("h3", "", "Принципы построения");
+  content.appendChild(prinTitle);
+  var prinList = createElement("ul", "");
+  for (var i = 0; i < METHODOLOGY.principles.length; i++) {
+    var prinLi = createElement("li", "", METHODOLOGY.principles[i]);
+    prinList.appendChild(prinLi);
+  }
+  content.appendChild(prinList);
+
+  // Таблица шкал — только в контексте "results"
+  if (context === "results") {
+    var tableTitle = createElement("h3", "", "Базис каждой шкалы");
+    content.appendChild(tableTitle);
+
+    var table = document.createElement("table");
+    table.className = "methodology-scale-table";
+
+    var thead = document.createElement("thead");
+    var headRow = document.createElement("tr");
+    var th1 = document.createElement("th");
+    th1.textContent = "Шкала";
+    var th2 = document.createElement("th");
+    th2.textContent = "Опора";
+    headRow.appendChild(th1);
+    headRow.appendChild(th2);
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    var tbody = document.createElement("tbody");
+    for (var s = 0; s < METHODOLOGY.scalesBasis.length; s++) {
+      var row = document.createElement("tr");
+      var td1 = document.createElement("td");
+      td1.textContent = METHODOLOGY.scalesBasis[s].scale;
+      var td2 = document.createElement("td");
+      td2.textContent = METHODOLOGY.scalesBasis[s].basis;
+      row.appendChild(td1);
+      row.appendChild(td2);
+      tbody.appendChild(row);
+    }
+    table.appendChild(tbody);
+    content.appendChild(table);
+  }
+
+  // Ограничения
+  var limTitle = createElement("h3", "", "Ограничения");
+  content.appendChild(limTitle);
+  var limList = createElement("ul", "");
+  for (var l = 0; l < METHODOLOGY.limitations.length; l++) {
+    var limLi = createElement("li", "", METHODOLOGY.limitations[l]);
+    limList.appendChild(limLi);
+  }
+  content.appendChild(limList);
+
+  // Список литературы
+  var refTitle = createElement("h3", "", "Список литературы");
+  content.appendChild(refTitle);
+  var refList = createElement("ul", "");
+  for (var r = 0; r < METHODOLOGY.references.length; r++) {
+    var refLi = createElement("li", "methodology-ref");
+    var refNum = createElement("span", "methodology-ref-num", (r + 1) + ".");
+    refLi.appendChild(refNum);
+    refLi.appendChild(document.createTextNode(" " + METHODOLOGY.references[r]));
+    refList.appendChild(refLi);
+  }
+  content.appendChild(refList);
+
+  section.appendChild(toggle);
+  section.appendChild(content);
+  return section;
+}
 // ------------------------------------------------------------
 // 11. РАДАРНАЯ ДИАГРАММА (Canvas, адаптивная)
 // ------------------------------------------------------------
@@ -1625,6 +1761,7 @@ function createElement(tag, className, textContent) {
   if (textContent) el.textContent = textContent;
   return el;
 }
+
 
 
 

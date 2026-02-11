@@ -1100,10 +1100,211 @@ body {
 /* --- Действия с результатами --- */
 .results-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 24px 0 8px 0;
+}
+
+.results-actions__main {
+  display: flex;
   gap: 10px;
-  padding: 20px 0;
+  width: 100%;
+  max-width: 480px;
+  margin-bottom: 10px;
+}
+
+.results-actions__main .btn {
+  flex: 1;
+}
+
+.results-actions__secondary {
+  width: 100%;
+  max-width: 480px;
+  margin-bottom: 6px;
+}
+
+.results-actions__extra-toggle {
+  display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px;
+  background: none;
+  border: none;
+  font-family: var(--font-main);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+
+.results-actions__extra-toggle:hover {
+  color: var(--accent);
+}
+
+.results-actions__extra {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 480px;
+  animation: fadeIn var(--transition);
+}
+
+.results-actions__extra.open {
+  display: flex;
+}
+
+.results-actions__restart {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-light);
+}
+
+/* --- Раскрывающийся блок «Методология» --- */
+.methodology-section {
+  margin-top: 8px;
+}
+
+.methodology-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-main);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.methodology-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.methodology-content {
+  display: none;
+  margin-top: 10px;
+  padding: 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  animation: fadeIn var(--transition-slow);
+}
+
+.methodology-content.open {
+  display: block;
+}
+
+.methodology-content h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 16px 0 8px 0;
+}
+
+.methodology-content h3:first-child {
+  margin-top: 0;
+}
+
+.methodology-content p {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.65;
+  margin-bottom: 8px;
+}
+
+.methodology-content ul {
+  list-style: none;
+  margin-bottom: 12px;
+}
+
+.methodology-content li {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  padding: 4px 0;
+  padding-left: 16px;
+  position: relative;
+}
+
+.methodology-content li::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.methodology-ref {
+  font-size: 0.8rem !important;
+  color: var(--text-muted) !important;
+  line-height: 1.5 !important;
+  padding: 3px 0 !important;
+  padding-left: 20px !important;
+}
+
+.methodology-ref::before {
+  content: none !important;
+}
+
+.methodology-ref-num {
+  position: absolute;
+  left: 0;
+  font-size: 0.75rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.methodology-scale-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+  font-size: 0.82rem;
+}
+
+.methodology-scale-table th {
+  text-align: left;
+  padding: 6px 8px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.8rem;
+  border-bottom: 2px solid var(--border);
+}
+
+.methodology-scale-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  vertical-align: top;
+  line-height: 1.4;
+}
+
+.methodology-scale-table td:first-child {
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  width: 35%;
+}
+
+@media (max-width: 480px) {
+  .results-actions__main {
+    flex-direction: column;
+  }
+
+  .methodology-scale-table td:first-child {
+    white-space: normal;
+  }
 }
 
 /* --- Валидность (предупреждения) --- */
@@ -1430,4 +1631,5 @@ body {
   scrollbar-color: var(--border) var(--bg-secondary);
 
 }
+
 

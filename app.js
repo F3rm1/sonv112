@@ -1162,61 +1162,238 @@ function drawRadarChart(canvas, scales) {
 // ------------------------------------------------------------
 
 function downloadPdf() {
-  // Используем html2pdf.js (подключён через CDN в index.html)
   if (typeof html2pdf === "undefined") {
-    // Fallback: скачать текстовый отчёт
     downloadTextReport();
     return;
   }
 
-  const element = document.querySelector(".results");
-  if (!element) return;
+  // Создаём отдельный контейнер для PDF (не трогаем DOM страницы)
+  const pdfContainer = document.createElement("div");
+  pdfContainer.id = "pdf-export";
+  pdfContainer.style.cssText = "position:absolute;left:-9999px;top:0;width:794px;background:#ffffff;color:#2D2D2D;font-family:Segoe UI,Roboto,Arial,sans-serif;font-size:13px;line-height:1.5;padding:0;";
 
-  // Временно убираем кнопки
-  const actions = element.querySelector(".results-actions");
-  if (actions) actions.style.display = "none";
+  // --- Заголовок ---
+  pdfContainer.innerHTML = buildPdfHtml();
 
-  // Раскрываем все детали
-  const allDetails = element.querySelectorAll(".scale-details");
-  allDetails.forEach(function (d) { d.classList.add("open"); });
-  const allToggles = element.querySelectorAll(".scale-details-toggle");
-  allToggles.forEach(function (t) { t.style.display = "none"; });
+  document.body.appendChild(pdfContainer);
 
   const opt = {
-    margin: [10, 10, 10, 10],
+    margin: [12, 14, 12, 14],
     filename: "SONV-112_" + new Date().toISOString().split("T")[0] + ".pdf",
-    image: { type: "jpeg", quality: 0.95 },
-    html2canvas: { scale: 2, useCORS: true },
+    image: { type: "jpeg", quality: 0.98 },
+    html2canvas: {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+      letterRendering: true
+    },
     jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-    pagebreak: { mode: ["avoid-all", "css", "legacy"] }
+    pagebreak: { mode: ["css"], avoid: [".pdf-block", ".pdf-scale", ".pdf-flag"] }
   };
 
-  html2pdf().set(opt).from(element).save().then(function () {
-    if (actions) actions.style.display = "";
-    allDetails.forEach(function (d) { d.classList.remove("open"); });
-    allToggles.forEach(function (t) { t.style.display = ""; });
+  html2pdf().set(opt).from(pdfContainer).save().then(function () {
+    document.body.removeChild(pdfContainer);
     showToast("PDF сохранён");
-  }).catch(function () {
-    if (actions) actions.style.display = "";
-    allDetails.forEach(function (d) { d.classList.remove("open"); });
-    allToggles.forEach(function (t) { t.style.display = ""; });
+  }).catch(function (err) {
+    console.error("PDF error:", err);
+    document.body.removeChild(pdfContainer);
     downloadTextReport();
   });
 }
 
-function downloadTextReport() {
-  if (!STATE.results) return;
-  const text = generateProfileText(STATE.results);
-  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "SONV-112_" + new Date().toISOString().split("T")[0] + ".txt";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  showToast("Текстовый отчёт сохранён");
+function buildPdfHtml() {
+  if (!STATE.results) return "";
+
+  const scales = STATE.results.scales;
+  const interp = STATE.results.interpretation;
+  const flags = STATE.results.flags;
+  const recs = STATE.results.recommendations;
+  const date = new Date().toLocaleDateString("ru-RU");
+
+  // Стили внутри PDF (инлайн, чтобы не зависеть от style.css)
+  const s = {
+    title: 'style="font-size:22px;font-weight:700;text-align:center;margin:0 0 4px 0;color:#2D2D2D;"',
+    subtitle: 'style="font-size:12px;text-align:center;color:#888;margin:0 0 4px 0;"',
+    date: 'style="font-size:11px;text-align:center;color:#999;margin:0 0 16px 0;"',
+    disclaimer: 'style="font-size:10px;color:#999;text-align:center;padding:8px 12px;border:1px solid #ddd;border-radius:6px;margin:0 0 20px 0;background:#f9f9f7;"',
+    sectionTitle: 'style="font-size:14px;font-weight:700;color:#4A6FA5;border-bottom:2px solid #4A6FA5;padding:0 0 4px 0;margin:20px 0 10px 0;"',
+    block: 'class="pdf-block" style="margin:0 0 12px 0;padding:10px 12px;border:1px solid #e0e0dc;border-radius:6px;background:#fafaf8;page-break-inside:avoid;"',
+    scaleRow: 'class="pdf-scale" style="margin:0 0 8px 0;padding:8px 10px;border:1px solid #eee;border-radius:4px;page-break-inside:avoid;"',
+    scaleName: 'style="font-size:12px;font-weight:600;color:#2D2D2D;margin:0 0 4px 0;"',
+    scaleValues: 'style="font-size:11px;color:#666;margin:0 0 4px 0;"',
+    bar: 'style="width:100%;height:6px;background:#e8e8e4;border-radius:3px;overflow:hidden;margin:0 0 2px 0;"',
+    subScale: 'style="margin:4px 0 0 16px;padding:4px 0 0 8px;border-left:2px solid #e0e0dc;font-size:11px;color:#666;"',
+    interpBlock: 'style="margin:0 0 10px 0;padding:10px 12px;border-left:3px solid #4A6FA5;background:#f5f7fa;border-radius:0 6px 6px 0;page-break-inside:avoid;"',
+    interpTitle: 'style="font-size:13px;font-weight:700;color:#2D2D2D;margin:0 0 4px 0;"',
+    interpText: 'style="font-size:11px;color:#555;line-height:1.6;margin:0 0 6px 0;"',
+    detail: 'style="margin:6px 0 0 0;padding:6px 8px;background:#eef1f5;border-radius:4px;font-size:11px;color:#555;"',
+    detailTitle: 'style="font-weight:700;color:#2D2D2D;margin:0 0 2px 0;font-size:11px;"',
+    flagCard: 'class="pdf-flag" style="display:flex;gap:8px;margin:0 0 8px 0;padding:8px 10px;border:1px solid #e0e0dc;border-radius:4px;page-break-inside:avoid;"',
+    flagTitle: 'style="font-size:12px;font-weight:700;color:#2D2D2D;margin:0 0 2px 0;"',
+    flagText: 'style="font-size:11px;color:#555;line-height:1.5;"',
+    recDo: 'style="font-size:11px;color:#555;padding:3px 0;line-height:1.5;"',
+    recDont: 'style="font-size:11px;color:#555;padding:3px 0;line-height:1.5;"',
+    recSpec: 'style="margin:10px 0 0 0;padding:8px 10px;background:#f0f0ec;border-radius:4px;font-size:11px;color:#555;"',
+    footer: 'style="margin:20px 0 0 0;padding:10px 0 0 0;border-top:1px solid #ddd;font-size:9px;color:#aaa;text-align:center;"'
+  };
+
+  let html = "";
+
+  // --- Шапка ---
+  html += `<div ${s.title}>СОНВ-112</div>`;
+  html += `<div ${s.subtitle}>Скрининговый опросник нейроотличности для взрослых</div>`;
+  html += `<div ${s.date}>Дата заполнения: ${date}</div>`;
+  html += `<div ${s.disclaimer}>⚠️ Данный документ — результат скринингового опросника, не диагностическое заключение. Диагноз может поставить только квалифицированный специалист.</div>`;
+
+  // --- Контрольные параметры ---
+  html += `<div ${s.sectionTitle}>⚙️ Контрольные параметры</div>`;
+  const controlKeys = ["L", "M", "K", "N"];
+  html += `<div ${s.block}>`;
+  for (const key of controlKeys) {
+    const sc = scales[key];
+    html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f0f0ec;">`;
+    html += `<span style="font-size:12px;color:#555;">${sc.name}</span>`;
+    html += `<span style="font-size:12px;font-weight:600;">${sc.zone.icon} ${sc.zone.label} (${sc.sum}/${sc.max})</span>`;
+    html += `</div>`;
+  }
+  html += `</div>`;
+
+  // Предупреждения валидности
+  if (STATE.results.validity.warnings.length > 0) {
+    for (const w of STATE.results.validity.warnings) {
+      html += `<div ${s.block} style="border-color:${w.type === 'critical' ? '#C75B5B' : '#E8C547'};">`;
+      html += `<div style="font-weight:700;font-size:12px;margin-bottom:4px;">${w.icon} ${w.title}</div>`;
+      html += `<div style="font-size:11px;color:#555;line-height:1.5;">${w.text}</div>`;
+      html += `</div>`;
+    }
+  }
+
+  // --- Основные шкалы ---
+  html += `<div ${s.sectionTitle}>📋 Результаты по шкалам</div>`;
+  const mainKeys = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
+  for (const key of mainKeys) {
+    const sc = scales[key];
+    const barColor = sc.zone.color;
+    html += `<div ${s.scaleRow}>`;
+    html += `<div ${s.scaleName}>${sc.name}</div>`;
+    html += `<div ${s.scaleValues}>${sc.percentage}% (${sc.sum}/${sc.max}) — ${sc.zone.icon} ${sc.zone.label}</div>`;
+    html += `<div ${s.bar}><div style="width:${sc.percentage}%;height:100%;background:${barColor};border-radius:3px;"></div></div>`;
+
+    // Суб-шкалы
+    for (const [subKey, sub] of Object.entries(sc.subscales)) {
+      html += `<div ${s.subScale}>`;
+      html += `└─ ${sub.name}: ${sub.percentage}% (${sub.sum}/${sub.max}) ${sub.zone.icon}`;
+      html += `</div>`;
+    }
+
+    html += `</div>`;
+  }
+
+  // --- Интерпретация ---
+  html += `<div ${s.sectionTitle}>🔍 Интерпретация</div>`;
+
+  // Сводка
+  html += `<div ${s.interpBlock}>`;
+  html += `<div ${s.interpTitle}>Сводка</div>`;
+  html += `<div ${s.interpText}>${interp.summary.replace(/\n/g, "<br>")}</div>`;
+  html += `</div>`;
+
+  // СДВГ
+  if (interp.adhd.title) {
+    html += buildPdfInterpBlock(interp.adhd, s);
+  }
+
+  // РАС
+  if (interp.asd.title) {
+    html += buildPdfInterpBlock(interp.asd, s);
+  }
+
+  // Расстройства обучения
+  for (const item of interp.learning) {
+    html += buildPdfInterpBlock(item, s);
+  }
+
+  // Коморбидность
+  for (const combo of interp.comorbidity) {
+    html += `<div ${s.interpBlock} style="border-left-color:#D98C4A;">`;
+    html += `<div ${s.interpTitle}>${combo.title}</div>`;
+    html += `<div ${s.interpText}>${combo.text}</div>`;
+    if (combo.interactions) {
+      for (const inter of combo.interactions) {
+        html += `<div ${s.detail}>`;
+        html += `<div ${s.detailTitle}>⚡ ${inter.title}</div>`;
+        html += `<div style="font-size:10px;color:#555;">${inter.text}</div>`;
+        html += `</div>`;
+      }
+    }
+    html += `</div>`;
+  }
+
+  // --- Флаги ---
+  if (flags.length > 0) {
+    html += `<div ${s.sectionTitle}>⚠️ Обратите внимание</div>`;
+    for (const flag of flags) {
+      html += `<div ${s.flagCard}>`;
+      html += `<div>`;
+      html += `<div ${s.flagTitle}>${flag.icon} ${flag.title}</div>`;
+      html += `<div ${s.flagText}>${flag.text}</div>`;
+      html += `</div>`;
+      html += `</div>`;
+    }
+  }
+
+  // --- Рекомендации ---
+  html += `<div ${s.sectionTitle}>📌 Рекомендации</div>`;
+  html += `<div ${s.block}>`;
+  for (const item of recs.doList) {
+    html += `<div ${s.recDo}>✅ ${item}</div>`;
+  }
+  html += `<div style="height:8px;"></div>`;
+  for (const item of recs.dontList) {
+    html += `<div ${s.recDont}>❌ ${item}</div>`;
+  }
+  if (recs.specialistNotes.length > 0) {
+    html += `<div ${s.recSpec}>`;
+    html += `<div style="font-weight:700;font-size:11px;margin-bottom:4px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Заметки для специалиста</div>`;
+    for (const note of recs.specialistNotes) {
+      html += `<div style="padding:2px 0;">• ${note}</div>`;
+    }
+    html += `</div>`;
+  }
+  html += `</div>`;
+
+  // --- Футер ---
+  html += `<div ${s.footer}>`;
+  html += `СОНВ-112 v1.0 — скрининговый инструмент, не заменяет клиническую диагностику.<br>`;
+  html += `Основан на DSM-5, ASRS, RAADS-R, CAT-Q, AQ-50 и других валидированных методиках.`;
+  html += `</div>`;
+
+  return html;
+}
+
+function buildPdfInterpBlock(data, s) {
+  let html = `<div ${s.interpBlock}>`;
+  html += `<div ${s.interpTitle}>${data.title}`;
+  if (data.confidence) {
+    const confColor = data.confidence === "high" ? "#7BAE7F" :
+                      data.confidence === "moderate" ? "#E8C547" : "#D98C4A";
+    html += ` <span style="font-size:10px;padding:1px 6px;border-radius:3px;background:${confColor}22;color:${confColor};font-weight:600;">${getConfidenceLabel(data.confidence)}</span>`;
+  }
+  html += `</div>`;
+  html += `<div ${s.interpText}>${data.text}</div>`;
+
+  if (data.details) {
+    for (const detail of data.details) {
+      html += `<div ${s.detail}>`;
+      html += `<div ${s.detailTitle}>${detail.title}</div>`;
+      html += `<div style="font-size:10px;color:#555;line-height:1.5;">${detail.text}</div>`;
+      html += `</div>`;
+    }
+  }
+
+  html += `</div>`;
+  return html;
 }
 
 // ------------------------------------------------------------
@@ -1334,3 +1511,4 @@ function createElement(tag, className, textContent) {
   return el;
 
 }
+

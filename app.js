@@ -621,10 +621,8 @@ function createControlSection(scales, validity) {
 // --- Радарная диаграмма ---
 
 function createRadarSection(scales) {
-  const section = createElement("div", "results-section");
-  const header = createElement("div", "results-section__header", "📊 " + UI_TEXTS.results.profileHeading);
-  const body = createElement("div", "results-section__body");
-  const container = createElement("div", "radar-container");
+  const canvas = document.createElement("canvas");
+  canvas.id = "radarChart";
 
   const canvas = document.createElement("canvas");
   canvas.id = "radarChart";
@@ -954,75 +952,85 @@ function createResultsActions() {
 }
 
 // ------------------------------------------------------------
-// 11. РАДАРНАЯ ДИАГРАММА (рисуем вручную на Canvas)
+// 11. РАДАРНАЯ ДИАГРАММА (Canvas, адаптивная)
 // ------------------------------------------------------------
 
 function drawRadarChart(canvas, scales) {
-  // Адаптивный размер
-  const container = canvas.parentElement;
-  const containerWidth = container.clientWidth;
-  const size = Math.min(containerWidth, 600);
+  var container = canvas.parentElement;
+  var containerWidth = container.clientWidth;
 
-  // Высокое разрешение (Retina)
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = size * dpr;
-  canvas.height = size * dpr;
-  canvas.style.width = size + "px";
-  canvas.style.height = size + "px";
+  // Прямоугольный canvas — шире, чем выше, чтобы подписи помещались
+  var canvasW = Math.min(containerWidth, 650);
+  var canvasH = Math.round(canvasW * 0.82);
 
-  const ctx = canvas.getContext("2d");
+  // Retina: рисуем в 2x, показываем в 1x — чёткость
+  var dpr = window.devicePixelRatio || 1;
+  canvas.width = canvasW * dpr;
+  canvas.height = canvasH * dpr;
+  canvas.style.width = canvasW + "px";
+  canvas.style.height = canvasH + "px";
+
+  var ctx = canvas.getContext("2d");
   if (!ctx) return;
   ctx.scale(dpr, dpr);
 
-  // Данные для отображения
-  const radarScales = [
-    { key: "A", label: "Невнимательность" },
-    { key: "B", label: "Гиперактивность" },
-    { key: "C", label: "Эмоц.\nдисрегуляция" },
-    { key: "D", label: "Социальная\nкоммуникация" },
-    { key: "E", label: "Паттерны\nи ригидность" },
-    { key: "F", label: "Сенсорика" },
-    { key: "G", label: "Камуфляж" },
-    { key: "H", label: "Дислексия" },
-    { key: "I", label: "Дискалькулия" },
-    { key: "J", label: "Диспраксия" }
+  var centerX = canvasW / 2;
+  var centerY = canvasH / 2;
+
+  // Радиус полигона — оставляем щедрый запас для подписей
+  var labelSpace = canvasW < 450 ? 80 : 100;
+  var radius = Math.min(centerX, centerY) - labelSpace;
+  if (radius < 60) radius = 60;
+
+  // Укороченные подписи — помещаются гарантированно
+  var radarItems = [
+    { key: "A", lines: ["Невниматель-", "ность"] },
+    { key: "B", lines: ["Гипер-", "активность"] },
+    { key: "C", lines: ["Эмоц.", "дисрегул."] },
+    { key: "D", lines: ["Соц.", "коммуник."] },
+    { key: "E", lines: ["Паттерны"] },
+    { key: "F", lines: ["Сенсорика"] },
+    { key: "G", lines: ["Камуфляж"] },
+    { key: "H", lines: ["Дислексия"] },
+    { key: "I", lines: ["Дискаль-", "кулия"] },
+    { key: "J", lines: ["Диспраксия"] }
   ];
 
-  const n = radarScales.length;
-  const centerX = size / 2;
-  const centerY = size / 2;
+  var n = radarItems.length;
 
-  // Увеличенный отступ для подписей
-  const labelMargin = size < 400 ? 55 : 70;
-  const radius = Math.min(centerX, centerY) - labelMargin;
-
-  // Определяем цвета в зависимости от темы
-  const isDark = document.documentElement.getAttribute("data-theme") === "dark" ||
+  // Тема
+  var isDark = document.documentElement.getAttribute("data-theme") === "dark" ||
     (STATE.theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 
-  const gridColor = isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)";
-  const labelColor = isDark ? "#B0B0C0" : "#555555";
-  const valueColor = isDark ? "#D0D0E0" : "#333333";
-  const dataFill = isDark ? "rgba(123, 163, 204, 0.25)" : "rgba(74, 111, 165, 0.2)";
-  const dataStroke = isDark ? "rgba(123, 163, 204, 0.9)" : "rgba(74, 111, 165, 0.8)";
-  const thresholdColor = isDark ? "rgba(217, 140, 74, 0.5)" : "rgba(217, 140, 74, 0.4)";
+  var gridColor = isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.07)";
+  var labelColor = isDark ? "#B0B0C0" : "#555555";
+  var pctLabelColor = isDark ? "#888898" : "#999999";
+  var dataFill = isDark ? "rgba(123,163,204,0.25)" : "rgba(74,111,165,0.18)";
+  var dataStroke = isDark ? "rgba(123,163,204,0.85)" : "rgba(74,111,165,0.75)";
+  var thresholdStroke = isDark ? "rgba(217,140,74,0.45)" : "rgba(217,140,74,0.35)";
+
+  // Адаптивные шрифты
+  var fontLabel = canvasW < 450 ? 10.5 : 13;
+  var fontPct = canvasW < 450 ? 9.5 : 11.5;
+  var fontGrid = canvasW < 450 ? 8.5 : 10;
+  var lineH = fontLabel + 3;
+
+  // Угол для индекса i
+  function angleFor(i) {
+    return (2 * Math.PI * i) / n - Math.PI / 2;
+  }
 
   // Очистка
-  ctx.clearRect(0, 0, size, size);
+  ctx.clearRect(0, 0, canvasW, canvasH);
 
-  // Размеры шрифтов адаптивно
-  const baseFontSize = size < 400 ? 11 : (size < 500 ? 12.5 : 14);
-  const smallFontSize = size < 400 ? 9 : (size < 500 ? 10 : 11);
-  const valueFontSize = size < 400 ? 10 : (size < 500 ? 11 : 12);
-
-  // Рисуем концентрические многоугольники (20%, 40%, 60%, 80%, 100%)
-  for (let level = 1; level <= 5; level++) {
-    const r = (radius * level) / 5;
+  // --- Сетка: концентрические многоугольники ---
+  for (var level = 1; level <= 5; level++) {
+    var r = (radius * level) / 5;
     ctx.beginPath();
-    for (let i = 0; i < n; i++) {
-      const angle = (2 * Math.PI * i) / n - Math.PI / 2;
-      const x = centerX + r * Math.cos(angle);
-      const y = centerY + r * Math.sin(angle);
+    for (var i = 0; i < n; i++) {
+      var a = angleFor(i);
+      var x = centerX + r * Math.cos(a);
+      var y = centerY + r * Math.sin(a);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
@@ -1030,57 +1038,52 @@ function drawRadarChart(canvas, scales) {
     ctx.strokeStyle = gridColor;
     ctx.lineWidth = 1;
     ctx.stroke();
-
-    // Подписи процентов (только чётные)
-    if (level % 2 === 0) {
-      ctx.fillStyle = isDark ? "#505060" : "#BBBBBB";
-      ctx.font = smallFontSize + "px sans-serif";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "bottom";
-      ctx.fillText((level * 20) + "%", centerX + 4, centerY - r - 2);
-    }
   }
 
-  // Рисуем оси
-  for (let i = 0; i < n; i++) {
-    const angle = (2 * Math.PI * i) / n - Math.PI / 2;
-    const x = centerX + radius * Math.cos(angle);
-    const y = centerY + radius * Math.sin(angle);
+  // Подписи процентов на сетке (только 40% и 80%)
+  ctx.font = fontGrid + "px sans-serif";
+  ctx.fillStyle = isDark ? "#505060" : "#C0C0C0";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "bottom";
+  ctx.fillText("40%", centerX + 3, centerY - radius * 0.4 - 2);
+  ctx.fillText("80%", centerX + 3, centerY - radius * 0.8 - 2);
 
+  // --- Оси ---
+  for (var i = 0; i < n; i++) {
+    var a = angleFor(i);
     ctx.beginPath();
     ctx.moveTo(centerX, centerY);
-    ctx.lineTo(x, y);
+    ctx.lineTo(centerX + radius * Math.cos(a), centerY + radius * Math.sin(a));
     ctx.strokeStyle = gridColor;
     ctx.lineWidth = 1;
     ctx.stroke();
   }
 
-  // Рисуем пороговую линию (60% — «значительная»)
+  // --- Пороговая линия 60% (пунктир) ---
   ctx.beginPath();
-  for (let i = 0; i < n; i++) {
-    const angle = (2 * Math.PI * i) / n - Math.PI / 2;
-    const r = radius * 0.6;
-    const x = centerX + r * Math.cos(angle);
-    const y = centerY + r * Math.sin(angle);
+  for (var i = 0; i < n; i++) {
+    var a = angleFor(i);
+    var r60 = radius * 0.6;
+    var x = centerX + r60 * Math.cos(a);
+    var y = centerY + r60 * Math.sin(a);
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }
   ctx.closePath();
-  ctx.strokeStyle = thresholdColor;
+  ctx.strokeStyle = thresholdStroke;
   ctx.lineWidth = 1.5;
-  ctx.setLineDash([5, 5]);
+  ctx.setLineDash([5, 4]);
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Рисуем данные (полигон)
+  // --- Данные: полигон ---
   ctx.beginPath();
-  for (let i = 0; i < n; i++) {
-    const scale = scales[radarScales[i].key];
-    const value = scale.percentage / 100;
-    const angle = (2 * Math.PI * i) / n - Math.PI / 2;
-    const r = radius * value;
-    const x = centerX + r * Math.cos(angle);
-    const y = centerY + r * Math.sin(angle);
+  for (var i = 0; i < n; i++) {
+    var sc = scales[radarItems[i].key];
+    var val = sc.percentage / 100;
+    var a = angleFor(i);
+    var x = centerX + radius * val * Math.cos(a);
+    var y = centerY + radius * val * Math.sin(a);
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }
@@ -1091,69 +1094,84 @@ function drawRadarChart(canvas, scales) {
   ctx.lineWidth = 2.5;
   ctx.stroke();
 
-  // Рисуем точки на вершинах
-  for (let i = 0; i < n; i++) {
-    const scale = scales[radarScales[i].key];
-    const value = scale.percentage / 100;
-    const angle = (2 * Math.PI * i) / n - Math.PI / 2;
-    const r = radius * value;
-    const x = centerX + r * Math.cos(angle);
-    const y = centerY + r * Math.sin(angle);
-
+  // --- Точки на вершинах ---
+  for (var i = 0; i < n; i++) {
+    var sc = scales[radarItems[i].key];
+    var val = sc.percentage / 100;
+    var a = angleFor(i);
+    var px = centerX + radius * val * Math.cos(a);
+    var py = centerY + radius * val * Math.sin(a);
     ctx.beginPath();
-    ctx.arc(x, y, 5, 0, 2 * Math.PI);
-    ctx.fillStyle = scale.zone.color;
+    ctx.arc(px, py, 4.5, 0, 2 * Math.PI);
+    ctx.fillStyle = sc.zone.color;
     ctx.fill();
     ctx.strokeStyle = isDark ? "#2A2A42" : "#FFFFFF";
     ctx.lineWidth = 2;
     ctx.stroke();
   }
 
-  // Рисуем подписи
-  for (let i = 0; i < n; i++) {
-    const scale = scales[radarScales[i].key];
-    const angle = (2 * Math.PI * i) / n - Math.PI / 2;
-    const cosA = Math.cos(angle);
-    const sinA = Math.sin(angle);
+  // --- Подписи ---
+  for (var i = 0; i < n; i++) {
+    var sc = scales[radarItems[i].key];
+    var a = angleFor(i);
+    var cosA = Math.cos(a);
+    var sinA = Math.sin(a);
 
-    // Расстояние для подписи
-    const labelR = radius + (size < 400 ? 16 : 22);
-    const lx = centerX + labelR * cosA;
-    const ly = centerY + labelR * sinA;
+    // Позиция подписи — за пределами полигона
+    var gap = canvasW < 450 ? 14 : 18;
+    var lx = centerX + (radius + gap) * cosA;
+    var ly = centerY + (radius + gap) * sinA;
 
-    // Выравнивание текста в зависимости от позиции
-    ctx.textBaseline = "middle";
-    if (cosA > 0.3) {
+    // Выравнивание
+    if (cosA > 0.25) {
       ctx.textAlign = "left";
-    } else if (cosA < -0.3) {
+    } else if (cosA < -0.25) {
       ctx.textAlign = "right";
     } else {
       ctx.textAlign = "center";
     }
 
-    // Вертикальная коррекция для верхних/нижних подписей
-    let lyAdjust = ly;
-    if (sinA < -0.7) lyAdjust -= 6;  // верх
-    if (sinA > 0.7) lyAdjust += 6;   // низ
+    // Вертикальная коррекция для верха/низа
+    if (sinA < -0.6) ly -= 4;
+    if (sinA > 0.6) ly += 4;
 
-    // Название шкалы (может быть многострочным через \n)
-    ctx.font = "600 " + baseFontSize + "px sans-serif";
+    // Рисуем строки названия
+    ctx.font = "600 " + fontLabel + "px sans-serif";
     ctx.fillStyle = labelColor;
+    ctx.textBaseline = "middle";
 
-    const lines = radarScales[i].label.split("\n");
-    const lineHeight = baseFontSize + 3;
-    const totalHeight = lines.length * lineHeight;
-    const startY = lyAdjust - totalHeight / 2 + lineHeight / 2;
+    var textLines = radarItems[i].lines;
+    var totalTextH = textLines.length * lineH;
+    var startTextY = ly - totalTextH / 2 + lineH / 2;
 
-    for (let l = 0; l < lines.length; l++) {
-      ctx.fillText(lines[l], lx, startY + l * lineHeight);
+    for (var li = 0; li < textLines.length; li++) {
+      var drawX = lx;
+      // Гарантия: текст не выходит за край canvas
+      var measured = ctx.measureText(textLines[li]).width;
+      if (ctx.textAlign === "left" && drawX + measured > canvasW - 4) {
+        drawX = canvasW - measured - 4;
+      }
+      if (ctx.textAlign === "right" && drawX - measured < 4) {
+        drawX = measured + 4;
+      }
+      if (ctx.textAlign === "center") {
+        if (drawX + measured / 2 > canvasW - 4) drawX = canvasW - measured / 2 - 4;
+        if (drawX - measured / 2 < 4) drawX = measured / 2 + 4;
+      }
+      ctx.fillText(textLines[li], drawX, startTextY + li * lineH);
     }
 
-    // Значение в процентах (под названием)
-    const valueY = startY + lines.length * lineHeight + 2;
-    ctx.font = "700 " + valueFontSize + "px sans-serif";
-    ctx.fillStyle = scale.zone.color;
-    ctx.fillText(scale.percentage + "%", lx, valueY);
+    // Процент (под названием)
+    var pctY = startTextY + textLines.length * lineH + 1;
+    ctx.font = "700 " + fontPct + "px sans-serif";
+    ctx.fillStyle = sc.zone.color;
+
+    var pctText = sc.percentage + "%";
+    var pctMeasured = ctx.measureText(pctText).width;
+    var pctX = lx;
+    if (ctx.textAlign === "left" && pctX + pctMeasured > canvasW - 4) pctX = canvasW - pctMeasured - 4;
+    if (ctx.textAlign === "right" && pctX - pctMeasured < 4) pctX = pctMeasured + 4;
+    ctx.fillText(pctText, pctX, pctY);
   }
 }
 
@@ -1511,4 +1529,5 @@ function createElement(tag, className, textContent) {
   return el;
 
 }
+
 
